@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dmf-agent"
+version = "0.1.0"
+description = "DmfDataAgent - 指标问答 Agent（FastAPI + LangGraph + LangChain + MySQL + RAG + OpenTelemetry）"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # Web 层
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    # Agent 框架层（Harness）
+    "langgraph>=0.2.60",
+    "langchain>=0.3",
+    "langchain-core>=0.3",
+    "langchain-openai>=0.2",
+    "langchain-text-splitters>=0.3",
+    # 观测层（OpenTelemetry 标准：span 语义 + 落库 trace_spans；不接外部 collector）
+    "opentelemetry-sdk>=1.27",
+    # 数据层（MySQL）
+    "sqlalchemy[asyncio]>=2.0.30",
+    "aiomysql>=0.2",
+    "pymysql>=1.1",
+    "alembic>=1.13",
+    # 记忆分层 L1 热层 + 热点缓存（不可用时优雅降级，不阻断主链路）
+    "redis>=5,<6",
+    # 基础
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    # MCP（FR14）：标准工具协议 SDK，提供 stdio / streamable-http 真实 invoke 通道
+    "mcp>=1.4",
+    # 候选召回（AC 自动机黑话/完全匹配，迁移自老系统；未安装时自动退化朴素匹配）
+    "pyahocorasick>=2.0.0",
+    # 时间解析（农历节日换算 + 简繁归一化，均纯 Python）
+    "lunardate>=0.2.0",
+    "zhconv>=0.2.0",
+]
+
+[project.optional-dependencies]
+# RAG 向量检索后端（默认 Milvus/HNSW；FAISS 为零依赖本地可选项）
+rag = ["faiss-cpu>=1.8", "langchain-community>=0.3", "langchain-huggingface>=0.1", "sentence-transformers>=2.2.0"]
+milvus = ["pymilvus[milvus_lite]>=2.4"]
+# 文档加载（PDF 等）
+loaders = ["pypdf>=4.2"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+
+[tool.setuptools.packages.find]
+include = ["dmf_agent*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+# 固定经典默认规则集（E4/E7/E9/F），避免 ruff 版本漂移引入 UP 等风格规则噪声
+select = ["E4", "E7", "E9", "F"]

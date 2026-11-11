@@ -1,0 +1,147 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: dmf-agent-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: dmf_agent
+      MYSQL_USER: dmf_agent
+      MYSQL_PASSWORD: dmf_agent
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123456"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: ./backend
+    container_name: dmf-agent-app
+    restart: unless-stopped
+    environment:
+      DMF_APP-PORT: "8000"
+      DMF_DB-HOST: mysql
+      DMF_DB-USER: dmf_agent
+      DMF_DB-PASSWORD: dmf_agent
+      DMF_DB-DATABASE: dmf_agent
+      # 未配置的组件自动降级（LLM / Langfuse / Embedding），见 README
+      # DMF_LLM-MODEL / DMF_LLM-BASE_URL / DMF_LLM-API_KEY
+      # DMF_LANGFUSE-ENABLED / DMF_LANGFUSE-PUBLIC_KEY / DMF_LANGFUSE-SECRET_KEY
+      # StarRocks（主流程取数出口；未配置时取数明确报错，不返回假数据）
+      # DMF_STARROCKS-HOST / PORT / USER / PASSWORD / DATABASE
+      # 指标平台（HM）已移出主流程，仅 integrations/metric_platform 使用（离线元信息导入）
+      # DMF_HM-API_BASE / DMF_HM-TENANT_ID / DMF_HM-USER_ACCOUNT / DMF_HM-USER_NAME
+      # Embedding：调用独立部署的 embedding-service（OpenAI 兼容 /v1/embeddings 接口）
+      # 上线生产时，把 BASE_URL 指向生产环境的小模型服务（同为 OpenAI 兼容）即可，应用代码不变
+      DMF_LLM-EMBEDDING_BACKEND: "openai"
+      DMF_LLM-EMBEDDING_MODEL: "bge-large-zh"
+      DMF_LLM-EMBEDDING_BASE_URL: "http://embedding:8001/v1"
+      DMF_LLM-EMBEDDING_API_KEY: ""
+      # RAG 精排（FR7）：复用 embedding 服务的 /v1/rerank（bge-reranker-base）。
+      # 留空 DMF_RAG-RERANK_BASE_URL 即自动回落到上面的 EMBEDDING_BASE_URL + /rerank。
+      DMF_RAG-RERANK_ENABLED: "true"
+      DMF_RAG-RERANK_MODEL: "bge-reranker-base"
+      # 来源分级权重：权威源（口径字典）> 沉淀源 > 用户上传
+      DMF_RAG-AUTHORITY_WEIGHTS: '{"authoritative": 1.5, "sediment": 1.15, "user": 1.0}'
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      embedding:
+        condition: service_started
+
+  # 独立向量化（Embedding）服务：加载 bge-large-zh，暴露 OpenAI 兼容 /v1/embeddings 接口。
+  # 应用通过 DMF_LLM-EMBEDDING_BASE_URL=http://embedding:8001/v1 调用。
+  # 模型默认在首次请求时下载；国内/离线环境可在 embedding-service/Dockerfile 中烘焙模型（见其注释）。
+  embedding:
+    build: ./embedding-service
+    container_name: dmf-agent-embedding
+    restart: unless-stopped
+    environment:
+      EMBED_MODEL: "BAAI/bge-large-zh"
+      EMBED_PORT: "8001"
+      EMBED_HOST: "0.0.0.0"
+      HF_ENDPOINT: "https://hf-mirror.com"
+      # 精排（FR7）：与 embedding 同进程提供 /v1/rerank；模型首次请求惰性加载。
+      # 关掉即整块不可用（上游自动降级为纯 RRF，不影响知识问答）。
+      RERANK_ENABLED: "true"
+      RERANK_MODEL: "BAAI/bge-reranker-base"
+      RERANK_DEVICE: "cpu"
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Milvus 向量库（生产 profile）：测试环境无需此服务，用 pymilvus 内嵌库
+  # （DMF_RAG-BACKEND=milvus + DMF_RAG-MILVUS_URI 指向本地文件 data/milvus.db 即可）。
+  # 需要 Milvus server 时：docker compose --profile milvus up -d
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.18
+    profiles: ["milvus"]
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    volumes:
+      - etcd_data:/etcd
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    profiles: ["milvus"]
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    command: minio server /minios --console-address ":9001"
+    volumes:
+      - minio_data:/minios
+  milvus:
+    image: milvusdb/milvus:v2.4.17
+    profiles: ["milvus"]
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    depends_on:
+      - etcd
+      - minio
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+
+  # Langfuse 自托管（可选）：完整栈依赖 clickhouse/postgres/redis/minio，
+  # 建议开发期直接使用 Langfuse Cloud（https://cloud.langfuse.com），
+  # 需要私有化部署时参考官方 compose：https://langfuse.com/self-hosting
+  # docker compose --profile obs up -d
+  # langfuse-server:
+  #   image: langfuse/langfuse:2
+  #   profiles: ["obs"]
+  #   ports: ["3000:3000"]
+  #   environment:
+  #     DATABASE_URL: postgresql://postgres:postgres@langfuse-db:5432/langfuse
+  #     SALT: "salt"
+  #     ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+  #     NEXTAUTH_URL: http://localhost:3000
+  #     NEXTAUTH_SECRET: "nextauth-secret"
+  #     TELEMETRY_ENABLED: "false"
+
+volumes:
+  mysql_data:
+  etcd_data:
+  minio_data:
+  milvus_data:

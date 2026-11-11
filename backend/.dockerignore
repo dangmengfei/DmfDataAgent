@@ -1,0 +1,12 @@
+# 构建上下文排除项（避免把 venv / 数据 / 缓存打进镜像）
+.venv
+s_agent_env
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+data/
+tests/
+doc/
+.venv/
+*.egg-info

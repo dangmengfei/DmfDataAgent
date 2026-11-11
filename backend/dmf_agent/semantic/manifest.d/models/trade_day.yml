@@ -1,0 +1,52 @@
+# 交易域：下单/支付粒度日预聚合
+semantic_models:
+  - name: trade_day
+    description: 交易日汇总（DWS 预聚合，粒度：统计日期 × 渠道 × 地区 × 品类 × 平台 × 门店）
+    table: dws_trade_day
+    agg_time_dimension: 统计日期
+    entities:
+      - name: 交易
+        type: primary
+        expr: stat_date
+    dimensions:
+      - name: 统计日期
+        type: time
+        expr: stat_date
+        type_params:
+          time_granularity: day
+      - name: 渠道
+        type: categorical
+        expr: channel_name
+      - name: 地区
+        type: categorical
+        expr: region_name
+      - name: 品类
+        type: categorical
+        expr: category_name
+      - name: 平台
+        type: categorical
+        expr: platform_name
+      - name: 门店
+        type: categorical
+        expr: store_name
+    measures:
+      - name: gmv_amount
+        agg: sum
+        expr: gmv
+        agg_time_dimension: 统计日期
+        unit: 元
+      - name: order_count
+        agg: sum
+        expr: order_cnt
+        agg_time_dimension: 统计日期
+        unit: 笔
+      - name: paid_user_count
+        agg: sum
+        expr: paid_user_cnt
+        agg_time_dimension: 统计日期
+        unit: 人
+      - name: repurchase_user_count
+        agg: sum
+        expr: repurchase_user_cnt
+        agg_time_dimension: 统计日期
+        unit: 人

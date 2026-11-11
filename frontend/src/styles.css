@@ -1,0 +1,168 @@
+/* 全局样式（沿用豆包风格设计令牌，覆盖 Element Plus 主色） */
+:root{
+  --primary:#3370ff; --primary-deep:#2a5ce0; --primary-soft:#eaf1ff;
+  --bg:#f5f6f8; --card:#ffffff; --border:#e8eaee; --border-soft:#f0f1f4;
+  --text:#1f2329; --text-2:#4e5969; --muted:#86909c; --accent:#0f7a3d; --accent-soft:#e6f6ec;
+  --danger:#d92d20; --danger-soft:#fdecea;
+  --radius:12px; --shadow:0 2px 8px rgba(31,35,41,.06);
+  --side-w:248px;
+  /* Element Plus 主题对齐 */
+  --el-color-primary:#3370ff; --el-color-primary-light-3:#6a9bff; --el-color-primary-light-5:#9db6ff;
+  --el-color-primary-light-7:#cdd9ff; --el-color-primary-light-8:#e5ecff; --el-color-primary-light-9:#f2f6ff;
+  --el-color-primary-dark-2:#2a5ce0;
+  --el-border-radius-base:10px;
+  --el-font-size-base:13px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei","Segoe UI",sans-serif;background:var(--bg);color:var(--text);font-size:14px;overflow:hidden}
+#app{height:100vh}
+
+.app{display:flex;height:100vh}
+
+/* ===== 左侧边栏 ===== */
+.sidebar{width:var(--side-w);flex:0 0 var(--side-w);background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.side-logo{display:flex;align-items:center;gap:10px;padding:16px 16px 12px}
+.logo-box{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#3370ff,#6a9bff);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;box-shadow:0 2px 6px rgba(51,112,255,.35)}
+.logo-name{font-weight:600;font-size:15px}
+.logo-sub{font-size:11px;color:var(--muted);margin-top:1px}
+/* 新建对话：左右与导航项对齐（12px 内缩，不再贴满侧栏），高度/圆角收紧一档 */
+.new-chat{margin:4px 12px 10px;height:28px;padding:0 12px;border-radius:8px;font-size:13px}
+.side-section{padding:10px 16px 4px;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:.5px}
+.side-nav{flex:1 1 auto;min-height:60px;overflow-y:auto;padding:6px 12px 2px;display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--text-2);font-size:13px;transition:background .12s}
+.nav-item:hover{background:var(--border-soft)}
+.nav-item.on{background:var(--primary-soft);color:var(--primary);font-weight:500}
+.nav-item .el-icon{width:16px;height:16px;flex:0 0 16px}
+/* 最近会话：固定占一部分高度并自身滚动；菜单全展开时向下滚即可到达 */
+.session-list{flex:0 0 auto;max-height:38%;overflow-y:auto;padding:2px 8px 8px}
+.session-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:8px;cursor:pointer;color:var(--text-2);font-size:13px;transition:background .12s;margin-bottom:2px}
+.session-item:hover{background:var(--border-soft)}
+.session-item.active{background:var(--primary-soft);color:var(--primary);font-weight:500}
+.session-item .s-ico{width:16px;height:16px;flex:0 0 16px;opacity:.75}
+.session-item .s-txt{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side-foot{border-top:1px solid var(--border-soft);padding:12px 16px;display:flex;align-items:center;gap:10px}
+.avatar-sm{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#9db6ff,#3370ff);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600}
+.side-foot .u-name{font-size:13px;font-weight:500}
+.side-foot .u-sub{font-size:11px;color:var(--muted)}
+
+/* ===== 主区域 ===== */
+/* min-height:0 + overflow-y:auto：兜底滚动容器。
+   body 是 overflow:hidden，若某个视图自己不带滚动容器，内容就会被永久裁掉且无法滚动
+   （语义查询页曾踩此坑）。有自带滚动容器的视图（.chat/.obs-page/.sem-page）不受影响。 */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;overflow-y:auto}
+.topbar{height:56px;flex:0 0 56px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:12px}
+.topbar h1{font-size:15px;font-weight:600}
+.topbar .crumb{font-size:12px;color:var(--muted)}
+.status-pill{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);background:var(--bg);border:1px solid var(--border);padding:4px 10px;border-radius:20px}
+.status-pill .dot{width:7px;height:7px;border-radius:50%;background:#ffb400}
+.status-pill.ok .dot{background:#00b42a}
+.status-pill.ok{border-color:#e5f6ea;background:#f2fbf4;color:#00a325}
+.status-pill.err{border-color:#fde8e8;background:#fef1f1;color:#d93026}
+.status-pill.err .dot{background:#f53f3f}
+
+.chat{flex:1;overflow-y:auto;padding:20px 0 8px}
+.chat-inner{max-width:820px;margin:0 auto;padding:0 24px}
+
+/* 空态欢迎页 */
+.welcome{display:flex;flex-direction:column;align-items:center;padding:72px 0 40px;text-align:center}
+.w-logo{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#3370ff,#6a9bff);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;box-shadow:0 8px 24px rgba(51,112,255,.35)}
+.w-title{font-size:20px;font-weight:600;margin-top:18px}
+.w-sub{font-size:13px;color:var(--muted);margin-top:6px;max-width:520px;line-height:1.7}
+.w-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:28px;width:100%;max-width:640px}
+.w-card{border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;background:var(--card);cursor:pointer;text-align:left;transition:border-color .15s,box-shadow .15s;box-shadow:none}
+.w-card:hover{border-color:var(--primary);box-shadow:var(--shadow)}
+.w-card .wc-t{font-size:13px;font-weight:600;color:var(--text)}
+.w-card .wc-d{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.6}
+
+/* 消息流 */
+.msg{display:flex;gap:12px;margin:18px 0}
+.msg .avatar{width:36px;height:36px;border-radius:50%;flex:0 0 36px;display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;font-weight:600}
+.msg.assistant .avatar{background:linear-gradient(135deg,#00b42a,#7adfa0)}
+.msg.user{flex-direction:row-reverse}
+.msg.user .avatar{background:linear-gradient(135deg,#3370ff,#6a9bff)}
+.msg .body{max-width:76%;min-width:0}
+.msg.user .body{display:flex;flex-direction:column;align-items:flex-end}
+.bubble{padding:11px 14px;border-radius:14px;font-size:14px;line-height:1.7;word-break:break-word}
+.msg.assistant .bubble{background:var(--card);border:1px solid var(--border);border-top-left-radius:4px;box-shadow:var(--shadow)}
+.msg.user .bubble{background:linear-gradient(135deg,#3370ff,#4d86ff);color:#fff;border-top-right-radius:4px}
+.stages{display:flex;gap:6px;margin:0 0 8px;flex-wrap:wrap}
+.stage{font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--border-soft);padding:2px 9px;border-radius:20px;transition:all .2s}
+.stage.on{background:var(--accent-soft);color:var(--accent);border-color:#b7ebc6;font-weight:500}
+.stage.err{background:#fde8e8;color:#d93026;border-color:#fbcdcd}
+.bubble .meta{font-size:11px;color:var(--muted);margin-bottom:6px}
+.typing-dots{display:inline-flex;gap:4px;padding:4px 0}
+.typing-dots i{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:blink 1.2s infinite}
+.typing-dots i:nth-child(2){animation-delay:.2s}
+.typing-dots i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+/* 意图置信度徽标 */
+.intent-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-2);background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:2px 10px;margin-bottom:8px}
+.intent-badge b{color:var(--primary);font-weight:600}
+.intent-badge .conf{color:var(--muted)}
+.intent-badge .src{color:#86909c}
+
+/* ===== 查询改写提示（黑话翻译 / 口语归一 / 指代消解） ===== */
+.rewrite-badge{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text-2);background:var(--bg);border:1px dashed #C9D4F5;border-radius:14px;padding:3px 10px;margin-bottom:6px}
+.rewrite-badge .rw-tag{color:#fff;background:var(--primary);border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
+.rewrite-badge .rw-orig{color:var(--muted);text-decoration:line-through}
+.rewrite-badge .rw-arrow{color:#9AA5B1}
+.rewrite-badge .rw-new{color:var(--primary);font-weight:600}
+.rewrite-badge .rw-src{color:var(--muted)}
+.rewrite-badge .rw-grain{background:#EAF1FF;color:var(--primary);border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
+.rewrite-badge .rw-fb{margin-left:4px;display:inline-flex;align-items:center;gap:3px}
+.rewrite-badge .rw-fb-btn{font-size:12px;line-height:16px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:0 6px;cursor:pointer;transition:all .15s;user-select:none}
+.rewrite-badge .rw-fb-btn:hover{color:var(--primary);border-color:var(--primary)}
+.rewrite-badge .rw-fb-btn.on{color:#fff;background:var(--primary);border-color:var(--primary)}
+
+/* ===== 时间要素识别（相对时间 / 节假日 / 二十四节气） ===== */
+.time-badge{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text-2);background:var(--bg);border:1px dashed #C9E8D5;border-radius:14px;padding:3px 10px;margin-bottom:6px}
+.time-badge .rw-grain{background:#E8F5EE;color:#389E6D;border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
+.time-badge .rw-src{color:var(--muted)}
+
+/* ===== Markdown 渲染样式 ===== */
+.md{line-height:1.75}
+.md h1,.md h2,.md h3,.md h4{margin:12px 0 6px;font-weight:600;line-height:1.4}
+.md h1{font-size:17px}.md h2{font-size:16px}.md h3{font-size:15px}.md h4{font-size:14px}
+.md h1:first-child,.md h2:first-child,.md h3:first-child{margin-top:0}
+.md p{margin:6px 0}
+.md ul,.md ol{margin:6px 0;padding-left:22px}
+.md li{margin:3px 0}
+.md strong{font-weight:600}
+.md em{font-style:italic}
+.md del{color:var(--muted)}
+.md a{color:var(--primary);text-decoration:none}
+.md a:hover{text-decoration:underline}
+.md code{background:var(--bg);border:1px solid var(--border-soft);border-radius:4px;padding:1px 5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#c7254e}
+.md pre{background:#1f2329;color:#e8eaee;border-radius:8px;padding:10px 12px;margin:8px 0;overflow-x:auto}
+.md pre code{background:transparent;border:none;padding:0;color:inherit;font-size:12px;line-height:1.6;display:block}
+.md blockquote{margin:8px 0;padding:2px 12px;border-left:3px solid var(--primary);background:var(--primary-soft);border-radius:0 6px 6px 0;color:var(--text-2)}
+.md blockquote p{margin:4px 0}
+.md table{border-collapse:collapse;margin:8px 0;width:100%;font-size:13px}
+.md th,.md td{border:1px solid var(--border);padding:6px 10px;text-align:left}
+.md th{background:var(--bg);font-weight:600}
+.md tr:nth-child(even) td{background:#fafbfc}
+.md hr{border:none;border-top:1px solid var(--border);margin:12px 0}
+.md .md-hint{font-size:11px;color:var(--muted);margin-bottom:6px}
+
+/* ===== 输入区 ===== */
+.inputbar{flex:0 0 auto;padding:8px 24px 20px}
+.input-inner{max-width:820px;margin:0 auto}
+.input-box{border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:0 4px 16px rgba(31,35,41,.08);transition:border-color .15s,box-shadow .15s;overflow:hidden}
+.input-box:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px rgba(51,112,255,.12)}
+.input-box textarea{width:100%;border:none;outline:none;resize:none;padding:14px 16px 4px;font-size:14px;line-height:1.6;font-family:inherit;background:transparent;max-height:160px}
+.input-tools{display:flex;align-items:center;padding:6px 8px 8px}
+.tool-chip{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);background:var(--bg);border:1px solid var(--border-soft);padding:4px 10px;border-radius:14px;cursor:pointer;transition:all .15s}
+.tool-chip:hover{color:var(--primary);border-color:var(--primary);background:var(--primary-soft)}
+.input-hint{margin-left:10px;font-size:11px;color:var(--muted)}
+.disclaimer{text-align:center;font-size:11px;color:var(--muted);margin-top:8px}
+
+@media (max-width:760px){
+  .sidebar{display:none}
+  .chat-inner,.input-inner{padding:0 14px}
+}
+
+/* Element Plus 局部微调 */
+.el-drawer__header{padding:16px 18px;margin-bottom:0;border-bottom:1px solid var(--border);color:var(--text)}
+.el-drawer__body{padding:0}
+.el-overlay{backdrop-filter:none}

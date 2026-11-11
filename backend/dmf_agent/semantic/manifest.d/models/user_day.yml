@@ -1,0 +1,33 @@
+# 用户域：活跃/新增粒度日预聚合
+semantic_models:
+  - name: user_day
+    description: 用户日汇总（DWS 预聚合，粒度：统计日期 × 渠道 × 平台）
+    table: dws_user_day
+    agg_time_dimension: 统计日期
+    entities:
+      - name: 用户
+        type: primary
+        expr: stat_date
+    dimensions:
+      - name: 统计日期
+        type: time
+        expr: stat_date
+        type_params:
+          time_granularity: day
+      - name: 渠道
+        type: categorical
+        expr: channel_name
+      - name: 平台
+        type: categorical
+        expr: platform_name
+    measures:
+      - name: active_user_count
+        agg: sum
+        expr: active_user_cnt
+        agg_time_dimension: 统计日期
+        unit: 人
+      - name: new_user_count
+        agg: sum
+        expr: new_user_cnt
+        agg_time_dimension: 统计日期
+        unit: 人

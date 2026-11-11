@@ -1,0 +1,56 @@
+# 银行零售贷款域：维度与存款域**完全一致**，跨表指标才能按任意维度分组
+semantic_models:
+  - name: retail_loan_day
+    description: 零售贷款日汇总（DWS 预聚合，粒度：统计日期 × 机构 × 零售渠道 × 产品类型 × 客户类型 × 客户等级）
+    table: dws_retail_loan_day
+    agg_time_dimension: 统计日期
+    entities:
+      - name: 贷款账户
+        type: primary
+        expr: stat_date
+    dimensions:
+      - name: 统计日期
+        type: time
+        expr: stat_date
+        type_params:
+          time_granularity: day
+      - name: 机构
+        type: categorical
+        expr: org_name
+      - name: 零售渠道
+        type: categorical
+        expr: channel_name
+      - name: 产品类型
+        type: categorical
+        expr: product_type
+      - name: 客户类型
+        type: categorical
+        expr: customer_type
+      - name: 客户等级
+        type: categorical
+        expr: customer_level
+    measures:
+      - name: retail_loan_balance
+        agg: sum
+        expr: loan_balance
+        agg_time_dimension: 统计日期
+        unit: 元
+        description: 贷款余额（时点快照，SUM 加总）
+      - name: retail_loan_interest
+        agg: sum
+        expr: loan_interest
+        agg_time_dimension: 统计日期
+        unit: 元
+        description: 贷款利息收入（当日计提，SUM 加总）
+      - name: retail_npl_balance
+        agg: sum
+        expr: npl_balance
+        agg_time_dimension: 统计日期
+        unit: 元
+        description: 不良贷款余额（时点快照，SUM 加总）
+      - name: retail_loan_customer
+        agg: sum
+        expr: loan_customer_cnt
+        agg_time_dimension: 统计日期
+        unit: 户
+        description: 贷款客户数（当日户数快照，跨机构可加总（跨时间请用日均））

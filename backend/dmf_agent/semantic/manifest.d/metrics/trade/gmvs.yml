@@ -1,0 +1,41 @@
+# 交易/用户域：simple 原子指标
+metrics:
+  - name: GMV
+    type: simple
+    type_params: { measure: gmv_amount }
+    aliases: [成交额, 销售额, 营收, GMV总量]
+    unit: 元
+    round: 2
+    description: 成交总额（支付口径）
+
+  - name: 订单数
+    type: simple
+    type_params: { measure: order_count }
+    aliases: [订单量, 单量]
+    unit: 笔
+
+  - name: 付费用户数
+    type: simple
+    type_params: { measure: paid_user_count }
+    aliases: [付费人数, 付费用户]
+    unit: 人
+
+  - name: 复购用户数
+    type: simple
+    type_params: { measure: repurchase_user_count }
+    aliases: [复购人数, 重复购买用户]
+    unit: 人
+
+  - name: 日活跃用户数
+    type: simple
+    type_params: { measure: active_user_count }
+    aliases: [日活, 日活用户, DAU]
+    unit: 人
+    granularities: [day, week, month]
+    pop_types: [mom, yoy, wow, pop]
+
+  - name: 新增用户数
+    type: simple
+    type_params: { measure: new_user_count }
+    aliases: [新增, 新客, 新增用户]
+    unit: 人

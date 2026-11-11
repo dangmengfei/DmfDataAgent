@@ -1,0 +1,153 @@
+# 银行零售存款 / 贷款域（共 10 个：原子 6 + 衍生 2 + 派生 2）
+#   原子指标 simple  —— 不可再分的基础度量，直接取自 DWS 预聚合列
+#   衍生指标 derived —— 由原子指标按四则运算组合（可跨存款/贷款两域）
+#   派生指标 ratio   —— 比率型，分子/分母为原子或衍生指标，常输出百分数
+# 另有"时间限定型派生"（日均 / 月环比 / 同比）不由指标定义承载：
+#   - 日均     -> 查询期聚合覆盖 advanced.metric_result.agg = avg
+#   - 同/环比  -> period_comparison + pop_types 白名单
+metrics:
+  # ---- 原子指标（simple × 6）----
+  - name: 零售存款余额
+    type: simple
+    type_params: { measure: retail_deposit_balance }
+    aliases: [存款余额, 零售存款, 个人存款余额]
+    unit: 元
+    round: 2
+    description: 零售存款时点余额（原子指标，跨机构/渠道/产品加总）
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]
+
+  - name: 零售贷款余额
+    type: simple
+    type_params: { measure: retail_loan_balance }
+    aliases: [贷款余额, 零售贷款, 个人贷款余额]
+    unit: 元
+    round: 2
+    description: 零售贷款时点余额（原子指标，跨机构/渠道/产品加总）
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]
+
+  - name: 存款利息支出
+    type: simple
+    type_params: { measure: retail_deposit_interest }
+    aliases: [存款付息, 存款利息]
+    unit: 元
+    round: 2
+    description: 存款利息支出（原子指标，当日计提口径）
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]
+
+  - name: 贷款利息收入
+    type: simple
+    type_params: { measure: retail_loan_interest }
+    aliases: [贷款收息, 贷款利息]
+    unit: 元
+    round: 2
+    description: 贷款利息收入（原子指标，当日计提口径）
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]
+
+  - name: 不良贷款余额
+    type: simple
+    type_params: { measure: retail_npl_balance }
+    aliases: [不良余额, 不良贷款]
+    unit: 元
+    round: 2
+    description: 不良贷款时点余额（原子指标，资产质量分子项）
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]
+
+  - name: 贷款客户数
+    type: simple
+    type_params: { measure: retail_loan_customer }
+    aliases: [贷款户数, 借款人数]
+    unit: 户
+    round: 0
+    description: 零售贷款客户数（原子指标，当日户数快照，跨机构可加总（跨时间请用日均））
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]
+
+  # ---- 两阶段聚合指标（simple + two_stage）：先按天 SUM、再在目标粒度上聚合 ----
+  # 背景：底表为「日 × 机构 × 渠道 × 产品 × 客户类型 × 客户等级」多行快照，
+  # 余额类指标在月/季粒度若直接 SUM 会把每日快照累加（重复计数）；
+  # 用两阶段（日内 SUM -> 目标粒度 AVG / LAST）得到「日均」「月末时点值」。
+  - name: 月日均存款余额
+    type: simple
+    type_params: { measure: retail_deposit_balance_avg }
+    two_stage: { inner: sum, outer: avg }
+    aliases: [日均存款余额, 月日均存款, 日均余额]
+    unit: 元
+    round: 2
+    description: 月日均存款余额 = 先按天 SUM 各维度余额、再按月 AVG 每日余额（两阶段聚合，避免底表行均值/重复计数）
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]
+
+  - name: 期末存款余额
+    type: simple
+    type_params: { measure: retail_deposit_balance_eom }
+    two_stage: { inner: sum, outer: last }
+    aliases: [月末时点存款余额, 月末余额, 时点存款余额, 期末余额]
+    unit: 元
+    round: 2
+    description: 期末（月末）时点存款余额 = 先按天 SUM 各维度余额、再取目标粒度内最后一天的值（两阶段 sum→last，月末即月末快照）
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]
+
+  - name: 月日均存款客户数
+    type: simple
+    type_params: { measure: retail_deposit_customer }
+    two_stage: { inner: sum, outer: avg }
+    aliases: [日均存款客户数, 月均存款客户数]
+    unit: 户
+    round: 0
+    description: 月日均存款客户数 = 先按天 SUM 各维度户数、再按月 AVG 每日户数（跨时间用日均，避免直接 SUM 重复计数）
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]
+
+  # ---- 衍生指标（derived × 2）：原子指标的四则运算组合 ----
+  - name: 净利息收入
+    type: derived
+    type_params:
+      expr: "贷款利息收入 - 存款利息支出"
+      metrics: [贷款利息收入, 存款利息支出]
+    aliases: [利息净收入, 净利息]
+    unit: 元
+    round: 2
+    description: 贷款利息收入 - 存款利息支出（衍生指标，跨存款/贷款两域）
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]
+
+  - name: 户均贷款
+    type: derived
+    type_params:
+      expr: "零售贷款余额 / 贷款客户数"
+      metrics: [零售贷款余额, 贷款客户数]
+    aliases: [人均贷款, 笔均贷款, 户均贷款余额]
+    unit: 元
+    round: 2
+    description: 零售贷款余额 / 贷款客户数（衍生指标，反映户均授信规模）
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]
+
+  # ---- 派生指标（ratio × 2）：比率型，输出为百分数 ----
+  - name: 存贷比
+    type: ratio
+    type_params: { numerator: 零售贷款余额, denominator: 零售存款余额 }
+    aliases: [贷存比, 存贷款比例]
+    unit: "%"
+    scale: 100
+    round: 2
+    description: 零售贷款余额 / 零售存款余额（派生指标，衡量零售信贷投放力度）
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]
+
+  - name: 不良贷款率
+    type: ratio
+    type_params: { numerator: 不良贷款余额, denominator: 零售贷款余额 }
+    aliases: [不良率, NPL率]
+    unit: "%"
+    scale: 100
+    round: 2
+    description: 不良贷款余额 / 零售贷款余额（派生指标，资产质量核心指标）
+    granularities: [day, week, month, quarter, year]
+    pop_types: [mom, yoy, wow, pop, qoq]

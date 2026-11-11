@@ -1,0 +1,77 @@
+[
+  {
+    "id": 1001,
+    "cnName": "GMV",
+    "businessMeaning": "成交总额",
+    "metricsType": 2,
+    "unit": "元",
+    "dimensions": [
+      {"id": 66, "cnName": "消费渠道"},
+      {"id": 67, "cnName": "地区"},
+      {"id": 68, "cnName": "品类"}
+    ]
+  },
+  {
+    "id": 1002,
+    "cnName": "日活跃用户数",
+    "businessMeaning": "DAU，当日活跃用户数",
+    "metricsType": 1,
+    "unit": "人",
+    "dimensions": [
+      {"id": 66, "cnName": "消费渠道"},
+      {"id": 69, "cnName": "平台"}
+    ]
+  },
+  {
+    "id": 1003,
+    "cnName": "新增用户数",
+    "businessMeaning": "每日新注册用户",
+    "metricsType": 1,
+    "unit": "人",
+    "dimensions": [
+      {"id": 66, "cnName": "消费渠道"},
+      {"id": 67, "cnName": "地区"}
+    ]
+  },
+  {
+    "id": 1004,
+    "cnName": "付费转化率",
+    "businessMeaning": "付费用户/活跃用户",
+    "metricsType": 2,
+    "unit": "%",
+    "dimensions": [
+      {"id": 66, "cnName": "消费渠道"}
+    ]
+  },
+  {
+    "id": 1005,
+    "cnName": "客单价",
+    "businessMeaning": "GMV/订单数",
+    "metricsType": 2,
+    "unit": "元",
+    "dimensions": [
+      {"id": 68, "cnName": "品类"}
+    ]
+  },
+  {
+    "id": 1006,
+    "cnName": "订单数",
+    "businessMeaning": "有效订单总数",
+    "metricsType": 1,
+    "unit": "笔",
+    "dimensions": [
+      {"id": 66, "cnName": "消费渠道"},
+      {"id": 68, "cnName": "品类"}
+    ]
+  },
+  {
+    "id": 1007,
+    "cnName": "复购率",
+    "businessMeaning": "周期内重复购买用户占比",
+    "metricsType": 2,
+    "unit": "%",
+    "dimensions": [
+      {"id": 68, "cnName": "品类"}
+    ]
+  }
+]

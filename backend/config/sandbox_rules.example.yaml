@@ -1,0 +1,33 @@
+# =============================================================================
+# FR15 安全沙箱 —— 自定义规则示例（规则路径可配置）
+# -----------------------------------------------------------------------------
+# 启用方式（三选一，推荐第 1 种）：
+#   1) 环境变量（无需改代码）：
+#        DMF_HARNESS-SANDBOX_RULE_PATH=config/sandbox_rules.yaml
+#   2) 复制本文件为 sandbox_rules.yaml 并填入你的规则，再指向它
+#   3) 直接内联追加（不写文件）：
+#        DMF_HARNESS-SANDBOX_EXTRA_TEXT_PATTERNS='["某些自定义危险短语"]'
+#        DMF_HARNESS-SANDBOX_EXTRA_SQL_PATTERNS='["某些自定义 SQL 危险写法"]'
+#
+# 支持格式：.yaml / .json / .txt（.txt 每行一个正则，全部归入 text 层）
+# 顶层结构：
+#   sql  : 仅对【生成的取数 SQL】扫描（兜底 DDL / 数据外泄）
+#   text : 仅对【最终答复文本】扫描（兜底注入回声 / 代码执行 / 外联）
+#
+# ⚠️ 关键约定：text 层【不要】写 drop table / delete from 这类 SQL 关键字，
+#    否则会误伤"请删除该过滤条件"等正常中文答复。SQL 类写进 sql 层即可。
+# ⚠️ 所有模式按 IGNORECASE 编译；非法正则会被跳过并告警，不阻断主链路。
+# =============================================================================
+
+sql:
+  # 内置已覆盖 drop/truncate/alter/delete from/insert into 等，这里补充缝隙或自定义
+  - "information_schema\\.\\w+"      # 禁止探测系统库元信息
+  - "sleep\\s*\\(\\s*\\d+"           # 禁止基于时间的盲注探测
+  - "benchmark\\s*\\("              # 禁止压测/盲注函数
+
+text:
+  # 内置已覆盖提示注入 / os.system / eval / rm -rf / curl / /etc/passwd 等
+  # 这里可补充业务特有的危险短语
+  - "把数据库导出来"
+  - "system\\(\\s*['\"]"
+  - "pickle\\.load"                 # 反序列化执行风险

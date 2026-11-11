@@ -1,0 +1,64 @@
+# 银行零售存款域：日 × 机构 × 渠道 × 产品 × 客户类型 × 客户等级
+semantic_models:
+  - name: retail_deposit_day
+    description: 零售存款日汇总（DWS 预聚合，粒度：统计日期 × 机构 × 零售渠道 × 产品类型 × 客户类型 × 客户等级）
+    table: dws_retail_deposit_day
+    agg_time_dimension: 统计日期
+    entities:
+      - name: 存款账户
+        type: primary
+        expr: stat_date
+    dimensions:
+      - name: 统计日期
+        type: time
+        expr: stat_date
+        type_params:
+          time_granularity: day
+      - name: 机构
+        type: categorical
+        expr: org_name
+      - name: 零售渠道
+        type: categorical
+        expr: channel_name
+      - name: 产品类型
+        type: categorical
+        expr: product_type
+      - name: 客户类型
+        type: categorical
+        expr: customer_type
+      - name: 客户等级
+        type: categorical
+        expr: customer_level
+    measures:
+      - name: retail_deposit_balance
+        agg: sum
+        expr: deposit_balance
+        agg_time_dimension: 统计日期
+        unit: 元
+        description: 存款余额（时点快照，SUM 加总）
+      # 两阶段聚合专用度量（与 retail_deposit_balance 同物理列，但作为独立 key 避免
+      # metric_key 冲突）：月日均 = 日内 SUM 后目标粒度 AVG；月末时点 = 日内 SUM 后取最后一天。
+      - name: retail_deposit_balance_avg
+        agg: sum
+        expr: deposit_balance
+        agg_time_dimension: 统计日期
+        unit: 元
+        description: 存款余额（日均口径，供两阶段 sum→avg 使用）
+      - name: retail_deposit_balance_eom
+        agg: sum
+        expr: deposit_balance
+        agg_time_dimension: 统计日期
+        unit: 元
+        description: 存款余额（月末时点口径，供两阶段 sum→last 使用）
+      - name: retail_deposit_interest
+        agg: sum
+        expr: deposit_interest
+        agg_time_dimension: 统计日期
+        unit: 元
+        description: 存款利息支出（当日计提，SUM 加总）
+      - name: retail_deposit_customer
+        agg: sum
+        expr: deposit_customer_cnt
+        agg_time_dimension: 统计日期
+        unit: 户
+        description: 存款客户数（当日户数快照，跨机构可加总（跨时间请用日均））

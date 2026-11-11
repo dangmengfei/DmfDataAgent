@@ -1,0 +1,26 @@
+# 交易/用户域：转化率 / 复购率（ratio）+ 客单价（derived）
+metrics:
+  - name: 付费转化率
+    type: ratio
+    type_params: { numerator: 付费用户数, denominator: 日活跃用户数 }
+    aliases: [付费率, 转化率]
+    unit: "%"
+    scale: 100
+    round: 2
+
+  - name: 复购率
+    type: ratio
+    type_params: { numerator: 复购用户数, denominator: 日活跃用户数 }
+    aliases: [重复购买率]
+    unit: "%"
+    scale: 100
+    round: 2
+
+  - name: 客单价
+    type: derived
+    type_params:
+      expr: "GMV / 订单数"
+      metrics: [GMV, 订单数]
+    aliases: [客单, 客单值, 平均订单金额]
+    unit: 元
+    round: 2

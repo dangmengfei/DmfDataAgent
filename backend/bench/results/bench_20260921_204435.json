@@ -1,0 +1,38 @@
+{
+  "timestamp": "2026-09-21T20:44:35",
+  "config": {
+    "requests": 64,
+    "concurrency": 16,
+    "stream": false,
+    "stub_db": true,
+    "real_llm": false,
+    "warmup": 5
+  },
+  "stub_db_installed": true,
+  "stats": {
+    "count": 64,
+    "ok": 64,
+    "error": 0,
+    "wall_s": 0.4265,
+    "qps": 150.06,
+    "latency_mean": 0.1049,
+    "latency_min": 0.0995,
+    "latency_max": 0.1151,
+    "latency_p50": 0.1046,
+    "latency_p95": 0.1099,
+    "latency_p99": 0.1105,
+    "first_event_p50": 0.1046,
+    "first_event_p95": 0.1099
+  },
+  "analysis": {
+    "measured_p95_s": 0.1099,
+    "measured_first_event_p95_s": 0.1099,
+    "measured_qps": 150.06,
+    "prd_qps_target": 200,
+    "prd_p95_target_s": 8.0,
+    "prd_first_token_target_s": 1.5,
+    "p95_pass": true,
+    "first_token_pass": true,
+    "note": "本基线隔离了真实 LLM 与 StarRocks 取数，反映「框架+图编排+编译+安全/Harness」开销。真实 LLM（推理模型）单轮约 18.8s，是端到端延迟主导项；达标 200 QPS 需并发≈3765（200×18.8），单模型不可行，建议：① 换非推理小模型（首字/延迟量级下降1~2 个数量级）；② 开启查询缓存（P2-1）命中重复查询直接返回；③ LLM 网关多模型/限流与异步流水线。"
+  }
+}

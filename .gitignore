@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# 示例底表造数产物（可由 deploy/starrocks/seed_dws.py 随时重建，不入库）
+deploy/starrocks/dws_seed.sql
+doc_dmf/
+doc/
+CLAUDE.md
+MIGRATION.md
+.playwright-cli/
+.pytest_tmp/
+.claude/
+.workbuddy/
+embedding-service/

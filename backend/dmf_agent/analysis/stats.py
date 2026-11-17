@@ -20,6 +20,14 @@ def _is_time_column(name: str, values) -> bool:
     return isinstance(sample, str) and bool(_DATE_LIKE_RE.match(sample))
 
 
+def is_time_column(name: str, values) -> bool:
+    """公开判定：该列是否为时间列（列名白名单 + 日期样例正则）。
+
+    供归因节点探测时间轴复用（stats 内部同名私有函数的历史兼容包装）。
+    """
+    return _is_time_column(name, values)
+
+
 def compute_stats(query_result: dict[str, Any]) -> dict[str, dict[str, float]]:
     """对查询结果按指标列计算基础统计量（时间列与非数值列自动跳过）。"""
     columns: list[str] = query_result.get("columns", [])

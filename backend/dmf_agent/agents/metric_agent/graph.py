@@ -18,6 +18,8 @@
 意图路由说明（2026-08-27 意图识别迁移）：
 - metric_query / dimension_query / diagnosis 统一走取数链路
   （老系统"单一归因/绘图/解读插件自动前置取数"的等价实现；归因完整下钻链路 Phase 4 迁移）
+  归因优化 P1（2026-11-12，doc/归因分析优化方案.md）：diagnose_data 节点内部升级——期间对比 +
+  异动前置判定 + 自动补维度取数（harness 工具 diagnose_fetch）+ 结构变化标注，拓扑不变；
 - knowledge_qa 走 RAG 检索链路；chitchat 直接生成答复
 - 查询后追加技能（skills：绘图/解读/复杂计算）与 multi_query 标记存于 state，随 trace 落库
 

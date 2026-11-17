@@ -54,8 +54,11 @@ class AgentState(TypedDict, total=False):
     query_result: dict[str, Any]
     # analyze_data 节点产出：{summary, stats}
     analysis: dict[str, Any]
-    # diagnose 节点产出（intent=diagnosis）：{ok, metric, change, dimensions,
-    # same/opposite_contribution_list, smart_summary, global_summary}（Phase 4c）
+    # diagnose 节点产出（intent=diagnosis）：{ok, metric, compare_mode(period|endpoint),
+    # change, anomaly{status,method,score,outliers,message}, dimensions,
+    # same/opposite_contribution_list, added/removed_members, smart_summary,
+    # global_summary, action_hints, skipped_dimensions?, warnings?, fetched_dsl?}
+    # （Phase 4c + 2026-11-12 归因优化 P1，见 doc/改造记录.md）
     diagnosis: dict[str, Any]
     # create 节点产出（intent=create，FR8）：{ok, metric_key, name, status, problems, message}
     # 落库成功后 ok=True 含草稿 key；校验/落库失败 ok=False 含 problems/message

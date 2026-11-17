@@ -120,6 +120,36 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans 
 .time-badge .rw-grain{background:#E8F5EE;color:#389E6D;border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
 .time-badge .rw-src{color:var(--muted)}
 
+/* ===== 归因徽标（2026-11-12 P1：对比口径 / 异动判定 / 结构变化） ===== */
+.diag-badge{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text-2);background:var(--bg);border:1px dashed #E5C9A8;border-radius:14px;padding:3px 10px;margin-bottom:6px}
+.diag-badge .rw-tag{color:#fff;background:#C07A2B;border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
+.diag-badge .diag-mode{background:#FBF0E2;color:#A9661F;border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
+.diag-badge .diag-period{color:var(--muted)}
+.diag-badge .diag-anomaly{border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
+.diag-badge .anomaly-significant{background:#FDECEC;color:#C0392B}
+.diag-badge .anomaly-mild{background:#FBF0E2;color:#A9661F}
+.diag-badge .anomaly-noise{background:#EDF2F7;color:#5A6673}
+.diag-badge .anomaly-insufficient{background:#F0F0F0;color:#8A8A8A}
+.diag-badge .diag-struct{background:#EAF1FF;color:var(--primary);border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
+.diag-badge .diag-cross{background:#F3ECFA;color:#6B46C1;border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
+.diag-badge .diag-drill{background:#E9F6F3;color:#2A7F6F;border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
+.diag-badge .diag-advice{background:#FBF0E2;color:#A9661F;border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
+.diag-badge .diag-warn{color:#A9661F}
+.diag-badge .diag-fail{color:#C0392B}
+
+/* ===== 归因下钻路径 / 交叉矩阵（P2） ===== */
+.diag-path,.diag-cross-box{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text-2);background:var(--bg);border:1px dashed #C9D4F5;border-radius:14px;padding:3px 10px;margin-bottom:6px}
+.diag-path .rw-tag,.diag-cross-box .rw-tag{color:#fff;background:#6B46C1;border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
+.diag-path-node{color:var(--text-1)}
+.diag-path-node .diag-arrow{color:var(--primary);font-weight:600}
+.diag-path-children,.diag-cross-children{display:inline-flex;gap:4px;flex-wrap:wrap}
+.diag-child{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:0 6px;font-size:10px;line-height:16px;color:var(--text-2)}
+.diag-child.presence-added{background:#E8F5EE;color:#389E6D}
+.diag-child.presence-removed{background:#FDECEC;color:#C0392B}
+.diag-cross-row{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.diag-cross-a{color:var(--text-1)}
+.diag-cross-v{color:#C0392B;font-weight:600}
+
 /* ===== Markdown 渲染样式 ===== */
 .md{line-height:1.75}
 .md h1,.md h2,.md h3,.md h4{margin:12px 0 6px;font-weight:600;line-height:1.4}

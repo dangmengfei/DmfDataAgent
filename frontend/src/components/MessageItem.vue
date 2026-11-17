@@ -124,6 +124,76 @@
         <span v-if="srcLabel" class="src"> · {{ srcLabel }}</span>
         <span v-if="msg.wasMock" class="src"> · mock 数据</span>
       </span>
+      <!-- 归因徽标（2026-11-12 归因优化 P1）：对比口径 + 异动判定 + 结构变化提示 -->
+      <div v-if="msg.diagnosisMeta" class="diag-badge" :title="diagnosisTitle(msg.diagnosisMeta)">
+        <span class="rw-tag">归因</span>
+        <template v-if="msg.diagnosisMeta.failed">
+          <span class="diag-fail">{{ msg.diagnosisMeta.message }}</span>
+        </template>
+        <template v-else>
+          <span class="diag-mode">{{ msg.diagnosisMeta.compareMode === 'period' ? '期间对比' : '端点对比' }}</span>
+          <span v-if="msg.diagnosisMeta.period.curr" class="diag-period">
+            本期 {{ msg.diagnosisMeta.period.curr }} vs 上期 {{ msg.diagnosisMeta.period.prev }}
+          </span>
+          <span
+            v-if="msg.diagnosisMeta.anomaly"
+            class="diag-anomaly"
+            :class="'anomaly-' + msg.diagnosisMeta.anomaly.status"
+          >{{ anomalyLabel(msg.diagnosisMeta.anomaly.status) }}</span>
+          <span v-if="msg.diagnosisMeta.addedCount || msg.diagnosisMeta.removedCount" class="diag-struct">
+            结构变化 +{{ msg.diagnosisMeta.addedCount }}/-{{ msg.diagnosisMeta.removedCount }}
+          </span>
+          <span v-if="msg.diagnosisMeta.cross" class="diag-cross">
+            交叉 {{ msg.diagnosisMeta.cross.dimA }}×{{ msg.diagnosisMeta.cross.dimB }}
+          </span>
+          <span v-if="msg.diagnosisMeta.drilldown && msg.diagnosisMeta.drilldown.length" class="diag-drill">
+            下钻 {{ msg.diagnosisMeta.drilldown.length }} 层
+          </span>
+          <span v-if="msg.diagnosisMeta.adviceCount" class="diag-advice">
+            建议参考 {{ msg.diagnosisMeta.adviceCount }} 条
+          </span>
+        </template>
+        <span v-if="msg.diagnosisMeta.warnings && msg.diagnosisMeta.warnings.length" class="diag-warn">取数说明 {{ msg.diagnosisMeta.warnings.length }}</span>
+      </div>
+      <!-- 归因下钻路径（P2）：逐层定位链 -->
+      <div
+        v-if="msg.diagnosisMeta && msg.diagnosisMeta.drilldown && msg.diagnosisMeta.drilldown.length"
+        class="diag-path"
+      >
+        <span class="rw-tag">下钻路径</span>
+        <template v-for="(n, i) in msg.diagnosisMeta.drilldown" :key="i">
+          <span class="diag-path-node">
+            {{ n.parentDim }}={{ n.parentValue }}
+            <template v-if="n.parentChange != null">（{{ formatDiagNum(n.parentChange) }}）</template>
+            <span class="diag-arrow">→ {{ n.dim }}</span>
+          </span>
+          <span class="diag-path-children">
+            <template v-for="(c, j) in n.children.slice(0, 4)" :key="j">
+              <span class="diag-child" :class="c.presence === 'kept' ? '' : 'presence-' + c.presence">
+                {{ c.value }} {{ formatDiagNum(c.change) }}
+              </span>
+            </template>
+          </span>
+        </template>
+      </div>
+      <!-- 归因交叉矩阵（P2）：主维度 × 第二维度 -->
+      <div v-if="msg.diagnosisMeta && msg.diagnosisMeta.cross" class="diag-cross-box">
+        <span class="rw-tag">交叉归因</span>
+        <div v-for="cell in msg.diagnosisMeta.cross.cells.slice(0, 4)" :key="String(cell.value)" class="diag-cross-row">
+          <span class="diag-cross-a">{{ msg.diagnosisMeta.cross.dimA }}={{ cell.value }}</span>
+          <span class="diag-cross-v">{{ formatDiagNum(cell.change) }}</span>
+          <span class="diag-cross-children">
+            <template v-for="(c, j) in cell.children.slice(0, 4)" :key="j">
+              <span class="diag-child" :class="c.presence === 'kept' ? '' : 'presence-' + c.presence">
+                {{ msg.diagnosisMeta.cross.dimB }}={{ c.value }} {{ formatDiagNum(c.change) }}
+              </span>
+            </template>
+          </span>
+        </div>
+        <span v-if="msg.diagnosisMeta.cross.truncated" class="diag-warn">
+          （组合超限已截取，共 {{ msg.diagnosisMeta.cross.totalCombos }} 组）
+        </span>
+      </div>
       <div v-if="msg.role === 'user' && editing" class="edit-box">
         <textarea v-model="draft" class="edit-area" placeholder="修改提问后重新发送…" @keydown.ctrl.enter="saveEdit" @keydown.meta.enter="saveEdit"></textarea>
         <div class="edit-actions">
@@ -304,6 +374,42 @@ function rewriteTitle(msg) {
   const head = '查询改写（PRD 5.3.1：黑话翻译 / 口语归一 / 指代消解）'
   if (!meta.hits || !meta.hits.length) return head
   return `${head}\n${meta.hits.map(h => `· ${rwHitText(h)}（${h.scope || ''} / ${h.rewrite_mode || ''}）`).join('\n')}`
+}
+
+/* 归因徽标（2026-11-12 P1）：对比口径 + 异动判定说明 */
+function anomalyLabel(status) {
+  return { significant: '显著波动', mild: '波动较小', noise: '正常波动', insufficient: '样本不足' }[status] || status
+}
+/* 归因数值格式化：千分位 + 最多 2 位小数 */
+function formatDiagNum(v) {
+  if (v == null) return '-'
+  const n = Number(v)
+  if (!isFinite(n)) return String(v)
+  return n.toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+}
+function diagnosisTitle(meta) {
+  if (!meta) return ''
+  if (meta.failed) {
+    return ['归因未完成', meta.message, ...(meta.warnings || []).map(w => `说明：${w}`)].join('\n')
+  }
+  const lines = [
+    `归因分析（${meta.metric}）`,
+    `对比口径：${meta.compareMode === 'period' ? '期间对比（本期 vs 上期区间合计）' : '端点对比（起止两点）'}`,
+  ]
+  if (meta.period && meta.period.curr) {
+    lines.push(`本期 ${meta.period.curr} / 上期 ${meta.period.prev}`)
+  }
+  if (meta.anomaly) {
+    lines.push(`异动判定【${anomalyLabel(meta.anomaly.status)}】：${meta.anomaly.message || ''}`)
+  }
+  if (meta.skipped && meta.skipped.length) {
+    lines.push(`已跳过维度归因（波动不显著）：${meta.skipped.join('、')}`)
+  }
+  if (meta.addedCount || meta.removedCount) {
+    lines.push(`成员结构变化：新增 ${meta.addedCount} 个 / 消失 ${meta.removedCount} 个（已单独列示，不计入涨跌归因）`)
+  }
+  for (const w of meta.warnings || []) lines.push(`取数说明：${w}`)
+  return lines.join('\n')
 }
 
 /* 本轮观测信息：后端 node_trace.otel + elapsed_ms/tokens（历史消息同样具备） */

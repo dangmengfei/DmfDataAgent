@@ -189,6 +189,20 @@ def build_default_tool_registry() -> ToolRegistry:
         requires_data_permission=True,
     )
     registry.register(
+        "diagnose_fetch",
+        "归因自动补维度取数：在原 DSL 上追加时间/业务维度后重新取数（diagnose 节点专用；"
+        "追加的维度来自语义层该指标的可用维度白名单）",
+        input_schema={
+            "type": "object",
+            "required": ["dsl"],
+            "properties": {
+                "dsl": {"type": "object", "description": "追加了时间/业务维度的语义查询 DSL"},
+            },
+        },
+        required_permissions=["semantic:query"],
+        requires_data_permission=True,
+    )
+    registry.register(
         "retrieve_knowledge",
         "从知识库召回口径/文档片段",
         input_schema={

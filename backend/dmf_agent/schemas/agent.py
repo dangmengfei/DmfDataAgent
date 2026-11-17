@@ -135,6 +135,35 @@ class AdvancedAnalysis(BaseModel):
     ranking_method: str = Field("", description="global | group（可空）")
 
 
+class DiagnosisDimPlan(BaseModel):
+    """归因自动补维度的 LLM 规划输出（2026-11-12 P1）。
+
+    LLM 只做「从候选维度中排序选择」，不产生候选之外的维度名；
+    返回空/非法时由调用方回落语义层声明顺序（对齐 FR14 模型驱动优先 + 确定性兜底）。
+    """
+
+    dimensions: List[str] = Field(
+        default_factory=list, description="按解释力从强到弱排序的 1~3 个候选维度名"
+    )
+
+
+class DiagnosisPlanStep(BaseModel):
+    """归因下钻的单步 LLM 规划（2026-11 P2，doc/归因分析优化方案.md §6.3）。
+
+    LLM 在候选维度/已知维值内做 drill|stop 决策；返回非法动作（维度不在候选内、
+    维值不在已知集合）由调用方回落规则兜底（固定一层：贡献最大维值 + 声明顺序
+    下一个维度）。循环上限 max_drill_depth 步。
+    """
+
+    action: Literal["drill", "stop"] = Field(
+        "stop", description="drill=继续下钻 | stop=信息已足够，停止"
+    )
+    parent_dim: str = Field("", description="在哪个维度上取维值下钻（首层=主归因维度）")
+    value: str = Field("", description="要下钻的维值（必须来自上下文已列出的维值）")
+    dim: str = Field("", description="用哪个新维度切分（必须来自候选维度列表）")
+    reason: str = Field("", description="决策理由（一句话）")
+
+
 class MetricDraftProposal(BaseModel):
     """LLM 为 `create` 意图提出的指标定义草稿（FR8：用户用自然语言定义新指标）。
 

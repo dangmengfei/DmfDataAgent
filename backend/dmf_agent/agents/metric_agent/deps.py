@@ -17,7 +17,14 @@ from dmf_agent.db.base import ConversationStateRepository, SemanticRegistryRepos
 
 from langchain_core.language_models import BaseChatModel
 
-from dmf_agent.config.settings import AgentSettings, RecoverySettings, Settings, SkillSettings, SubAgentSettings
+from dmf_agent.config.settings import (
+    AgentSettings,
+    DiagnosisSettings,
+    RecoverySettings,
+    Settings,
+    SkillSettings,
+    SubAgentSettings,
+)
 from dmf_agent.db.base import DomainMemoryRepository, FewShotRepository, UserPreferenceRepository
 from dmf_agent.experience.store import ExampleStore
 from dmf_agent.rag.retriever import KnowledgeRetriever
@@ -118,6 +125,13 @@ class AgentDeps:
         if self.settings is not None:
             return self.settings.agent
         return AgentSettings()
+
+    @property
+    def diagnosis_settings(self) -> DiagnosisSettings:
+        """归因分析增强配置；settings 为 None（测试/降级）时回落默认值。"""
+        if self.settings is not None:
+            return self.settings.diagnosis
+        return DiagnosisSettings()
 
     @property
     def subagent_settings(self) -> SubAgentSettings:

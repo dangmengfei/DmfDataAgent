@@ -58,11 +58,60 @@ _TRACE_KEYS = (
     "active_skill", "skill_result",
     # 查询改写记录（PRD §5.3.1：原句 / 改写句 / 命中词条 / 改写类型，随 Trace 留痕）
     "query_rewrite",
+    # 归因（2026-11-12 归因优化 P1）：期间口径 / 异动判定 / 结构变化随 trace 落库，
+    # 供前端展示「本次结论是否显著、按什么口径对比」；维值明细按 _MAX_TRACE_DIM_ITEMS 截断
+    "diagnosis",
 )
 # trace 中 query_result 最多保留的行数（避免 node_trace 过大；前端据此绘图）
 _MAX_TRACE_ROWS = 60
+# trace 中归因维度明细每维最多保留条数（前列已是 |变化量| 降序，截尾不丢主要结论）
+_MAX_TRACE_DIM_ITEMS = 20
 # trace 中查询改写命中的最多保留条数（避免长问句命中过多把 trace 撑大）
 _MAX_TRACE_HITS = 20
+
+
+def _trim_diagnosis_for_trace(value: Any) -> Any:
+    """归因结果进 trace 前的裁剪：每维明细截断，fetched_dsl 只留维度清单。
+
+    P2 追加裁剪：交叉矩阵 cells 与下钻 children 同样限量（避免大基数维度把
+    node_trace 撑爆），advice_docs 片段已在上游截断（每条 400 字 / 3 条）。
+    """
+    if not isinstance(value, dict):
+        return value
+    dims = value.get("dimensions")
+    trimmed: Dict[str, Any] = dict(value)
+    if isinstance(dims, dict):
+        trimmed["dimensions"] = {
+            d: (items or [])[:_MAX_TRACE_DIM_ITEMS] for d, items in dims.items()
+        }
+    fetch_dsl = trimmed.get("fetched_dsl")
+    if isinstance(fetch_dsl, dict):
+        trimmed["fetched_dsl"] = {
+            "dimensions": fetch_dsl.get("dimensions") or [],
+            "metrics": fetch_dsl.get("metrics") or [],
+        }
+    cross = trimmed.get("cross")
+    if isinstance(cross, dict) and isinstance(cross.get("cells"), list):
+        trimmed["cross"] = {
+            **cross,
+            "cells": [
+                {
+                    **cell,
+                    "children": (cell.get("children") or [])[:_MAX_TRACE_DIM_ITEMS],
+                }
+                for cell in cross["cells"][:_MAX_TRACE_DIM_ITEMS]
+            ],
+        }
+    drilldown = trimmed.get("drilldown")
+    if isinstance(drilldown, list):
+        trimmed["drilldown"] = [
+            {
+                **node,
+                "children": (node.get("children") or [])[:_MAX_TRACE_DIM_ITEMS],
+            }
+            for node in drilldown
+        ]
+    return trimmed
 
 
 def _filters_to_map(filters: Any) -> Dict[str, Any]:
@@ -585,6 +634,8 @@ class ChatService:
                                         "hit_count": len(hits),
                                         "hits": hits[:_MAX_TRACE_HITS],
                                     }
+                                elif key == "diagnosis" and isinstance(value, dict):
+                                    value = _trim_diagnosis_for_trace(value)
                                 trace[key] = value
         except Exception as exc:  # noqa: BLE001 - 对话异常统一回报
             logger.exception("Agent 执行失败")

@@ -125,28 +125,134 @@ def _build_context(state: AgentState) -> str:
         primary_list = (diag.get("dimensions") or {}).get(primary_dim) if primary_dim else []
         same = diag.get("same_contribution_list") or []
         opp = diag.get("opposite_contribution_list") or []
+        anomaly = diag.get("anomaly") or {}
+        compare_mode = diag.get("compare_mode")
+        if compare_mode == "period":
+            period = change.get("period") or {}
+            basis = (
+                f"对比口径为**期间对比**：本期（{period.get('curr_start')}~{period.get('curr_end')}，"
+                f"{period.get('curr_points')} 个时间点）合计 {change.get('metrics_value')}，"
+                f"上期（{period.get('prev_start')}~{period.get('prev_end')}，"
+                f"{period.get('prev_points')} 个时间点）合计 {change.get('compare_metrics_value')}"
+            )
+        else:
+            basis = (
+                f"对比口径为**端点对比**：{change.get('begin_time')}（{change.get('metrics_value')}）"
+                f"→ {change.get('end_time')}（{change.get('compare_metrics_value')}）"
+            )
         same_n = "上升" if change.get("change_value", 0) > 0 else "下降"
+        rate_text = (
+            f"变化率 {change.get('change_rate')}"
+            if change.get("change_rate") is not None
+            else "上期无数据、变化率不可计算"
+        )
         diag_lines = [
             "归因分析（以下均为基于真实取数结果的确定性计算，请据此生成自然语言解读，"
             "不要编造数据之外的事实或维度）：",
-            f"- 主指标：【{diag.get('metric')}】，{change.get('begin_time')}→{change.get('end_time')}，"
-            f"从 {change.get('metrics_value')} 变为 {change.get('compare_metrics_value')}，"
-            f"变化 {change.get('change_value')}（{same_n}），变化率 {change.get('change_rate')}",
-            f"- 维度归因（{primary_dim or '无'}，按 |变化量| 降序，仅列前8）：",
+            f"- 主指标：【{diag.get('metric')}】。{basis}，变化 {change.get('change_value')}"
+            f"（{same_n}），{rate_text}",
         ]
-        for d in (primary_list or [])[:8]:
+        if anomaly:
             diag_lines.append(
-                f"  · {d.get('dim_name')}={d.get('dim_value')}：{d.get('change_value')}"
-                f"（影响指数 {d.get('effect_index')}，影响占比 {d.get('effect_rate')}）"
+                f"- 异动前置判定【{anomaly.get('status')}】：{anomaly.get('message')}"
             )
+            if anomaly.get("status") == "noise":
+                diag_lines.append(
+                    "  注意：波动未达显著水平，**不要**输出维度归因结论，"
+                    "如实说明指标处于正常波动范围即可。"
+                )
+        if diag.get("skipped_dimensions"):
+            diag_lines.append(
+                f"- 已跳过维度归因（波动不显著）：{diag.get('skipped_dimensions')}"
+            )
+        if primary_dim:
+            diag_lines.append(f"- 维度归因（{primary_dim}，按 |变化量| 降序，仅列前8）：")
+            for d in (primary_list or [])[:8]:
+                diag_lines.append(
+                    f"  · {d.get('dim_name')}={d.get('dim_value')}：{d.get('change_value')}"
+                    f"（影响指数 {d.get('effect_index')}，影响占比 {d.get('effect_rate')}）"
+                )
+        added = diag.get("added_members") or []
+        removed = diag.get("removed_members") or []
+        if added or removed:
+            parts = []
+            if added:
+                parts.append(
+                    "本期新增成员（上期无数据，不计入涨跌归因）："
+                    + "、".join(
+                        f"{a.get('dim_name')}={a.get('dim_value')}（{a.get('change_value')}）"
+                        for a in added[:5]
+                    )
+                )
+            if removed:
+                parts.append(
+                    "本期消失成员（本期无数据）："
+                    + "、".join(
+                        f"{r.get('dim_name')}={r.get('dim_value')}（{r.get('change_value')}）"
+                        for r in removed[:5]
+                    )
+                )
+            diag_lines.append("- 成员结构变化：" + "；".join(parts))
         diag_lines.append(f"- 同向贡献TOP：{json.dumps(same, ensure_ascii=False)}")
         diag_lines.append(f"- 反向贡献TOP：{json.dumps(opp, ensure_ascii=False)}")
+        # P2：两维交叉归因（主维度 × 第二维度）
+        cross = diag.get("cross")
+        if cross and cross.get("cells"):
+            cross_lines = [
+                f"- 两维交叉归因（{cross.get('dim_a')} × {cross.get('dim_b')}，"
+                f"按 |总变化| 降序，仅列前5 组）："
+            ]
+            for cell in (cross.get("cells") or [])[:5]:
+                cross_lines.append(
+                    f"  · {cross.get('dim_a')}={cell.get('dim_a_value')}："
+                    f"{cell.get('change_value')}"
+                    f"（内部按 {cross.get('dim_b')} 拆解："
+                    + "、".join(
+                        f"{c.get('dim_value')}={c.get('change_value')}"
+                        for c in (cell.get("children") or [])[:5]
+                    )
+                    + "）"
+                )
+            if cross.get("truncated"):
+                cross_lines.append(
+                    f"  （组合基数超限，已按贡献截取；完整组合共 {cross.get('total_combos')} 组）"
+                )
+            diag_lines.extend(cross_lines)
+        # P2：递归下钻路径
+        drilldown = diag.get("drilldown") or []
+        if drilldown:
+            drill_lines = ["- 下钻归因路径（逐层定位）："]
+            for node in drilldown:
+                children = "、".join(
+                    f"{c.get('dim_value')}={c.get('change_value')}"
+                    for c in (node.get("children") or [])[:5]
+                )
+                drill_lines.append(
+                    f"  · {node.get('parent_dim')}={node.get('parent_value')}"
+                    f"（该值变化 {node.get('parent_change')}）按 {node.get('dim')} 拆分："
+                    f"{children or '（无）'}"
+                )
+                if node.get("reason"):
+                    drill_lines.append(f"    · 下钻理由：{node.get('reason')}")
+            diag_lines.extend(drill_lines)
         hints = diag.get("action_hints") or []
         if hints:
             diag_lines.append("行动建议线索（基于上述贡献TOP，供你组织建议）：\n- " + "\n- ".join(hints))
+        # P2：知识库召回的口径/运营文档（建议参考，不作数据结论）
+        advice_docs = diag.get("advice_docs") or []
+        if advice_docs:
+            doc_lines = ["- 知识库参考片段（可用于组织行动建议，注意不要编造其中没有的事实）："]
+            for doc in advice_docs:
+                doc_lines.append(
+                    f"  · 【{doc.get('title') or doc.get('source') or '文档'}】"
+                    f"{str(doc.get('content') or '')[:300]}"
+                )
+            diag_lines.extend(doc_lines)
         diag_lines.append(
             f"规则总结参考：{diag.get('global_summary', '')} {diag.get('smart_summary', '')}"
         )
+        for w in diag.get("warnings") or []:
+            diag_lines.append(f"归因取数说明（如实转述给用户）：{w}")
         diag_lines.append("请在解读末尾标注『基于当前数据推断』。")
         sections.append("\n".join(diag_lines))
     # 数据明细 + 描述性统计（迁移自老 df_analysis_report 的报告输入）
@@ -390,7 +496,16 @@ def _template_answer(state: AgentState) -> str:
         analysis = state.get("analysis") or {}
         diag = state.get("diagnosis") or {}
         if diag.get("ok"):
+            anomaly = diag.get("anomaly") or {}
             diag_lines = [diag.get("global_summary", ""), diag.get("smart_summary", "")]
+            if anomaly.get("message"):
+                diag_lines.append(
+                    f"\n**异动判定（{anomaly.get('status')}）**：{anomaly.get('message')}"
+                )
+            if diag.get("skipped_dimensions"):
+                diag_lines.append(
+                    f"（波动未达显著水平，已跳过维度归因：{'、'.join(diag['skipped_dimensions'])}）"
+                )
             for item in diag.get("same_contribution_list") or []:
                 diag_lines.append(
                     f"- 【{item.get('dim_name')}-{item.get('dim_value')}】影响该指标 {item.get('change_value')}"
@@ -399,14 +514,56 @@ def _template_answer(state: AgentState) -> str:
                 diag_lines.append(
                     f"- 【{item.get('dim_name')}-{item.get('dim_value')}】（反向）影响该指标 {item.get('change_value')}"
                 )
+            added = diag.get("added_members") or []
+            removed = diag.get("removed_members") or []
+            if added:
+                diag_lines.append(
+                    "**本期新增成员**（上期无数据，不计入涨跌归因）："
+                    + "、".join(f"{a.get('dim_value')}" for a in added[:5])
+                )
+            if removed:
+                diag_lines.append(
+                    "**本期消失成员**："
+                    + "、".join(f"{r.get('dim_value')}" for r in removed[:5])
+                )
+            cross = diag.get("cross")
+            if cross and cross.get("cells"):
+                diag_lines.append("**两维交叉归因**（"
+                                  f"{cross.get('dim_a')} × {cross.get('dim_b')}）：")
+                for cell in (cross.get("cells") or [])[:5]:
+                    diag_lines.append(
+                        f"- {cross.get('dim_a')}={cell.get('dim_a_value')}："
+                        f"{cell.get('change_value')}（按 {cross.get('dim_b')} 拆解："
+                        + "、".join(
+                            f"{c.get('dim_value')}={c.get('change_value')}"
+                            for c in (cell.get("children") or [])[:5]
+                        )
+                        + "）"
+                    )
+            drilldown = diag.get("drilldown") or []
+            if drilldown:
+                diag_lines.append("**下钻归因路径**：")
+                for node in drilldown:
+                    diag_lines.append(
+                        f"- {node.get('parent_dim')}={node.get('parent_value')}"
+                        f"（变化 {node.get('parent_change')}）按 {node.get('dim')} 拆分："
+                        + "、".join(
+                            f"{c.get('dim_value')}={c.get('change_value')}"
+                            for c in (node.get("children") or [])[:5]
+                        )
+                    )
+            for w in diag.get("warnings") or []:
+                diag_lines.append(f"> 说明：{w}")
             hints = diag.get("action_hints") or []
             if hints:
                 diag_lines.append("\n**行动建议线索（基于当前数据推断）**：")
                 diag_lines.extend(f"- {h}" for h in hints)
             return "**归因分析（基于真实取数结果）**\n\n" + "\n".join(diag_lines)
+        message = diag.get("message", analysis.get("summary", "暂无可分析数据。"))
+        warning_text = "".join(f"\n> 说明：{w}" for w in diag.get("warnings") or [])
         return (
             "> 已识别意图：**指标归因**。\n\n"
-            f"{diag.get('message', analysis.get('summary', '暂无可分析数据。'))}"
+            f"{message}{warning_text}"
             "\n\n_提示：完整归因（因子归因 / 指标树 / 行动建议）见 MIGRATION Phase 4c 遗留。_"
         )
     if intent == "create":

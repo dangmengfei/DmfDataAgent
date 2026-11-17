@@ -877,6 +877,7 @@ export async function send(question, opts = {}) {
         }
         msg.viz = vizFromNodeTrace(t)
         msg.sqlInfo = sqlInfoFromNodeTrace(t)
+        msg.diagnosisMeta = diagnosisMetaFromTrace(t)
         msg.stages = stagesFromNodeTrace(t)
         msg.otel = t.otel || null
         msg.elapsedMs = t.elapsed_ms != null ? t.elapsed_ms : null
@@ -1267,6 +1268,64 @@ function vizFromNodeTrace(t) {
   return viz
 }
 
+/* 归因徽标数据：本轮归因的对比口径与异动判定（node_trace.diagnosis，2026-11-12 P1）。
+ * 只做确定性抽取；未发生归因（无 diagnosis / 未成功）时返回 null，不渲染徽标。 */
+function diagnosisMetaFromTrace(t) {
+  const d = t && t.diagnosis
+  if (!d || typeof d !== 'object') return null
+  if (!d.ok) {
+    return d.message ? { failed: true, message: String(d.message), warnings: d.warnings || [] } : null
+  }
+  const period = (d.change && d.change.period) || {}
+  const cross = d.cross && Array.isArray(d.cross.cells) ? d.cross : null
+  const drilldown = Array.isArray(d.drilldown) ? d.drilldown : []
+  return {
+    failed: false,
+    compareMode: d.compare_mode || '',
+    metric: d.metric || '',
+    anomaly: d.anomaly || null,
+    period: {
+      curr: period.curr_start ? `${period.curr_start}~${period.curr_end}` : '',
+      prev: period.prev_start ? `${period.prev_start}~${period.prev_end}` : ''
+    },
+    addedCount: (d.added_members || []).length,
+    removedCount: (d.removed_members || []).length,
+    skipped: d.skipped_dimensions || [],
+    /* P2：两维交叉矩阵与递归下钻路径 */
+    cross: cross
+      ? {
+          dimA: cross.dim_a || '',
+          dimB: cross.dim_b || '',
+          truncated: !!cross.truncated,
+          totalCombos: cross.total_combos || 0,
+          cells: (cross.cells || []).map((c) => ({
+            value: c.dim_a_value,
+            change: c.change_value,
+            children: (c.children || []).map((ch) => ({
+              value: ch.dim_value,
+              change: ch.change_value,
+              presence: ch.presence || 'kept'
+            }))
+          }))
+        }
+      : null,
+    drilldown: drilldown.map((n) => ({
+      parentDim: n.parent_dim || '',
+      parentValue: n.parent_value,
+      parentChange: n.parent_change,
+      dim: n.dim || '',
+      reason: n.reason || '',
+      children: (n.children || []).map((c) => ({
+        value: c.dim_value,
+        change: c.change_value,
+        presence: c.presence || 'kept'
+      }))
+    })),
+    adviceCount: (d.advice_docs || []).length,
+    warnings: d.warnings || []
+  }
+}
+
 /* 从 node_trace 提取「本轮执行的 SQL + 结果元信息」（查 SQL 面板用）。
  * execute_query 节点的产出 query_result 已含 sql/engine/models/row_count/elapsed_ms/error，
  * 后端在 final 事件与历史消息 node_trace 中均透传，这里只做确定性抽取。 */
@@ -1306,6 +1365,7 @@ function msgFromServer(m) {
     intentMeta: t.intent ? { intent: t.intent, confidence: null, source: '' } : null,
     viz: vizFromNodeTrace(t),
     sqlInfo: sqlInfoFromNodeTrace(t),
+    diagnosisMeta: diagnosisMetaFromTrace(t),
     trace: traceFromNodeTrace(t),
     rewriteMeta: rewriteMetaFromTrace(t, ''),
     timeExtract: null,

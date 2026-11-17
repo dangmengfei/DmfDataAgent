@@ -586,6 +586,43 @@ class AuthSettings(BaseModel):
     password_min_length: int = 6
 
 
+class DiagnosisSettings(BaseModel):
+    """归因分析增强（P1 期间对比 + 异动前置 + 自动补维度；P2 交叉/下钻/建议）。
+
+    P1：
+    - enabled：总开关。关闭时 diagnose 节点回退旧行为（端点对比归因，无补取数/无异动判定），
+      供线上回归兜底。
+    - compare_mode：period（期间对比，本期=时间轴后半段，上期=前半段）| endpoint
+      （旧端点对比：仅取首尾两个时间点，易被单日噪声带偏）。
+    - auto_fetch_dims：取数结果缺时间列或无维度分组时，自动发一次补充 GROUP BY 查询
+      （走 harness 白名单工具 `diagnose_fetch`）；失败降级用原始取数结果，不阻断。
+    - max_auto_dims：自动补维度时最多选取的维度数（按语义层声明顺序，LLM 可规划优先级）。
+
+    P2（2026-11-16，doc/归因分析优化方案.md §6）：
+    - cross_enabled：两维交叉归因（纯计算零取数，结果含 ≥2 个业务维度且期间口径时计算）。
+    - max_cross_combos：(a,b) 组合基数上限，超限按 |cell 总变化| 降序保留整 cell。
+    - drilldown_enabled：递归下钻（对贡献 TOP 维值用新维度再切一刀，每层一次补取数，
+      仅在异动判定为 significant 时触发，避免对轻度波动过度分析）。
+    - max_drill_depth：下钻层数上限（每层一次 harness 取数，受预算约束）。
+    - plan_model_driven：下钻路径 LLM 规划优先（模型驱动，对齐 FR14）；无 LLM / 失败 /
+      返回非法动作时回落规则兜底（固定一层：贡献最大维值 + 声明顺序下一个维度）。
+    - advice_rag_enabled：行动建议接知识库（以「指标 + TOP 维值」调 retrieve_knowledge，
+      命中的口径/运营文档供答复组织建议；无命中/降级时保留模板建议，不阻断）。
+    """
+
+    enabled: bool = True
+    compare_mode: str = "period"
+    auto_fetch_dims: bool = True
+    max_auto_dims: int = 3
+    # ---- P2 ----
+    cross_enabled: bool = True
+    max_cross_combos: int = 500
+    drilldown_enabled: bool = True
+    max_drill_depth: int = 2
+    plan_model_driven: bool = True
+    advice_rag_enabled: bool = True
+
+
 class AgentSettings(BaseModel):
     """Agent 主流程通用阈值。"""
 
@@ -618,6 +655,8 @@ class ModelSettings(BaseModel):
 class Settings(BaseSettings):
     app: AppSettings = Field(default_factory=AppSettings)
     agent: AgentSettings = Field(default_factory=AgentSettings)
+    # 归因分析增强（2026-11-12 P1：期间对比 + 异动前置 + 自动补维度）
+    diagnosis: DiagnosisSettings = Field(default_factory=DiagnosisSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     db: MySQLSettings = Field(default_factory=MySQLSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)

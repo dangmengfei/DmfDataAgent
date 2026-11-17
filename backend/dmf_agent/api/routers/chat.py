@@ -63,7 +63,8 @@ async def chat_stream(
         try:
             async for event in runtime.chat_service.astream_chat(
                 session_id=req.session_id, user_id=user_id, message=req.message, tenant_id=tenant_id,
-                user_role=role, user_permissions=permissions,
+                user_role=role, 
+                user_permissions=permissions,
                 # 结构化澄清提交：确定性合并要素后自动续跑后续步骤
                 clarify_selection=req.clarify_selection,
             ):

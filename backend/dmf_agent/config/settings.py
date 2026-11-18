@@ -621,6 +621,13 @@ class DiagnosisSettings(BaseModel):
     max_drill_depth: int = 2
     plan_model_driven: bool = True
     advice_rag_enabled: bool = True
+    # ---- P3（2026-11-17，doc/归因分析优化方案.md §7）----
+    # factors_enabled：因子归因（逐因子替换法）。前提：metric 清单声明 factors 公式；
+    # 每个因子一次补取数（走 diagnose_fetch），未声明 / 取数失败即跳过，不阻断。
+    factors_enabled: bool = True
+    # tree_enabled：指标树归因（单层分解）。前提：清单声明 metrics_tree；
+    # 子指标各一次补取数，树缺失/取数失败逐项跳过。
+    tree_enabled: bool = True
 
 
 class AgentSettings(BaseModel):

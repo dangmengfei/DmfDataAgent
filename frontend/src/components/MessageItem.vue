@@ -152,6 +152,13 @@
           <span v-if="msg.diagnosisMeta.adviceCount" class="diag-advice">
             建议参考 {{ msg.diagnosisMeta.adviceCount }} 条
           </span>
+          <span
+            v-if="msg.diagnosisMeta.relations && msg.diagnosisMeta.relations.length"
+            class="diag-rel"
+            :title="relationTitle(msg.diagnosisMeta.relations)"
+          >
+            联动 {{ msg.diagnosisMeta.relations.length }} 项
+          </span>
         </template>
         <span v-if="msg.diagnosisMeta.warnings && msg.diagnosisMeta.warnings.length" class="diag-warn">取数说明 {{ msg.diagnosisMeta.warnings.length }}</span>
       </div>
@@ -386,6 +393,13 @@ function formatDiagNum(v) {
   const n = Number(v)
   if (!isFinite(n)) return String(v)
   return n.toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+}
+/* 多指标联动提示（方向关系为确定性判定，非因果） */
+function relationTitle(relations) {
+  if (!relations || !relations.length) return ''
+  return ['多指标联动（方向判定，非因果结论）']
+    .concat(relations.map((r) => `${r.metric}：变化 ${formatDiagNum(r.change)}，与主指标${r.relation}`))
+    .join('\n')
 }
 function diagnosisTitle(meta) {
   if (!meta) return ''

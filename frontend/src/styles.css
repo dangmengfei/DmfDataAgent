@@ -134,6 +134,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans 
 .diag-badge .diag-cross{background:#F3ECFA;color:#6B46C1;border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
 .diag-badge .diag-drill{background:#E9F6F3;color:#2A7F6F;border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
 .diag-badge .diag-advice{background:#FBF0E2;color:#A9661F;border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
+.diag-badge .diag-rel{background:#EAF1FF;color:var(--primary);border-radius:8px;padding:0 6px;font-size:10px;line-height:16px}
 .diag-badge .diag-warn{color:#A9661F}
 .diag-badge .diag-fail{color:#C0392B}
 

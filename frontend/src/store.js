@@ -1322,6 +1322,13 @@ function diagnosisMetaFromTrace(t) {
       }))
     })),
     adviceCount: (d.advice_docs || []).length,
+    /* 多指标联合归因：次要指标归因与方向关系 */
+    relations: (d.metric_relations || []).map((r) => ({
+      metric: r.metric,
+      change: r.change_value,
+      relation: r.relation || ''
+    })),
+    secondaryCount: (d.per_metric || []).filter((e) => e && e.ok).length,
     warnings: d.warnings || []
   }
 }

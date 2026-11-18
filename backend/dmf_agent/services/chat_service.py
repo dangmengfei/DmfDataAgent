@@ -111,6 +111,25 @@ def _trim_diagnosis_for_trace(value: Any) -> Any:
             }
             for node in drilldown
         ]
+    factors = trimmed.get("factors")
+    if isinstance(factors, dict) and isinstance(factors.get("factors"), list):
+        trimmed["factors"] = {
+            **factors,
+            "factors": factors["factors"][:_MAX_TRACE_DIM_ITEMS],
+        }
+    tree = trimmed.get("tree")
+    if isinstance(tree, dict) and isinstance(tree.get("children"), list):
+        trimmed["tree"] = {
+            **tree,
+            "children": tree["children"][:_MAX_TRACE_DIM_ITEMS],
+        }
+    # 多指标联合归因：次要指标条目封顶（紧凑结构，单条已含 TOP 截断）
+    per_metric = trimmed.get("per_metric")
+    if isinstance(per_metric, list):
+        trimmed["per_metric"] = per_metric[:_MAX_TRACE_DIM_ITEMS]
+    relations = trimmed.get("metric_relations")
+    if isinstance(relations, list):
+        trimmed["metric_relations"] = relations[:_MAX_TRACE_DIM_ITEMS]
     return trimmed
 
 

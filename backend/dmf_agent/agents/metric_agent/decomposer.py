@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 _SPLIT_MARKERS = re.compile(r"[、，,与和及以及]+|分别|对比|对照|各自|同时")
 # 子问题模板（聚焦单个指标，避免引入父问题无关上下文）
 _SUBQ_TEMPLATE = "{metric}在相关维度下的表现如何？"
+# 归因意图问句的标记：这类问句的「和/与」是并列主语而非拆分请求——
+# 联合归因（diagnose 节点多指标联合处理，2026-11-17）恰恰需要同一次取数里
+# 的全部指标列做方向关系判定；拆成独立子任务会丢失归因意图与联动分析。
+_DIAGNOSIS_MARKERS = re.compile(r"为什么|为何|归因|什么原因|原因|异动|波动分析|下滑原因|下降原因|上升原因")
 
 
 def _detect_metrics(text: str, deps: AgentDeps) -> List[str]:
@@ -57,6 +61,11 @@ def decompose_query(
     text = question if isinstance(question, str) else str(question)
     metrics = _detect_metrics(text, deps)
     has_marker = bool(_SPLIT_MARKERS.search(text))
+    # 归因意图问句不拆分：联合归因需要同一次取数的全部指标列（多指标联合处理 +
+    # metric_relations 方向判定），拆成独立 metric_query 子任务会丢失归因意图与
+    # 指标间联动分析（2026-11-17，多指标联合归因）。
+    if _DIAGNOSIS_MARKERS.search(text):
+        return [SubTask(id="st-1", question=text, intent="diagnosis", depth=0)]
 
     if has_marker and len(metrics) >= 2:
         tasks: List[SubTask] = []

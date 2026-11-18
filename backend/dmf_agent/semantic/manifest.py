@@ -133,6 +133,11 @@ class Metric:
     # 例：月日均存款余额 = 先按天 SUM 余额、再按月 AVG 每日余额。
     # dict 形如 {"inner": "sum", "outer": "avg"}；inner 缺省取 measure.agg，outer 缺省 "avg"。
     two_stage: Optional[Dict[str, str]] = None
+    # 因子公式（P3 因子归因，可选）：把指标拆解为因子算式。
+    # 形如 {"expr": "uv * cvr * arpu", "factors": {"uv": "访客数", "cvr": "转化率", "arpu": "客单价"}}，
+    # factors 的值为因子名（可引用其它指标名）；expr 仅支持因子键与 * ( ) 组合。
+    # 校验：expr 中出现的因子键必须在 factors 中声明；factors 引用的指标须真实存在。
+    factors: Optional[Dict[str, Any]] = None
 
     def match(self, name: str) -> bool:
         """业务名或别名命中。"""
@@ -170,6 +175,11 @@ class SemanticManifest:
         self._raw: Dict[str, Any] = {}
         self.models: List[SemanticModel] = []
         self.metrics: List[Metric] = []
+        # 指标树（P3 指标树归因，可选）：父子聚合关系列表。
+        # 每节点形如 {"parent": "GMV", "child": "订单数", "weight": 1.0} 或
+        # {"node": "GMV", "children": ["订单数", "客单价"]} 的规范化展开；
+        # 缺失/为空时指标树归因整体跳过（不报错）。
+        self.metrics_tree: List[Dict[str, Any]] = []
         self._model_by_name: Dict[str, SemanticModel] = {}
         self._measure_owner: Dict[str, SemanticModel] = {}
         self._metric_by_name: Dict[str, Metric] = {}
@@ -184,11 +194,56 @@ class SemanticManifest:
     def _parse_and_index(self) -> None:
         self.models = [self._parse_model(m) for m in self._raw.get("semantic_models") or []]
         self.metrics = [self._parse_metric(m) for m in self._raw.get("metrics") or []]
+        self.metrics_tree = self._parse_metrics_tree(self._raw.get("metrics_tree"))
         # 索引（重复 measure / 指标名会在此暴露）——须在引用校验前完成
         self._reindex()
         problems = self.validate() + self.reference_problems()
         if problems:
             raise ManifestError("语义清单校验失败：\n- " + "\n- ".join(problems))
+
+    @staticmethod
+    def _parse_metrics_tree(raw: Any) -> List[Dict[str, Any]]:
+        """解析 metrics_tree：统一展开为 {parent, child, weight} 边列表。
+
+        接受两种写法：
+        - 边写法：[{"parent": "GMV", "child": "订单数", "weight": 1.0}, ...]
+        - 子树写法：[{"node": "GMV", "children": ["订单数", "客单价"]}, ...]
+          （weight 缺省 1.0；两种写法可混用）
+        结构异常的节点静默跳过（P3 归因依赖方自行判断空树），不在加载期报错——
+        树是可选能力，坏配置不应阻断整个清单加载。
+        """
+        if not isinstance(raw, list):
+            return []
+        edges: List[Dict[str, Any]] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            if item.get("parent") and item.get("child"):
+                edges.append(
+                    {
+                        "parent": str(item["parent"]),
+                        "child": str(item["child"]),
+                        "weight": float(item.get("weight") or 1.0),
+                    }
+                )
+                continue
+            node = item.get("node")
+            children = item.get("children")
+            if node and isinstance(children, list):
+                for child in children:
+                    if isinstance(child, dict) and child.get("child"):
+                        edges.append(
+                            {
+                                "parent": str(node),
+                                "child": str(child["child"]),
+                                "weight": float(child.get("weight") or 1.0),
+                            }
+                        )
+                    elif isinstance(child, str):
+                        edges.append(
+                            {"parent": str(node), "child": child, "weight": 1.0}
+                        )
+        return edges
 
     def _load_raw(self) -> Dict[str, Any]:
         """加载原始清单字典。
@@ -264,6 +319,7 @@ class SemanticManifest:
         inst._raw = dict(raw)
         inst.models = []
         inst.metrics = []
+        inst.metrics_tree = []
         inst._model_by_name = {}
         inst._measure_owner = {}
         inst._metric_by_name = {}
@@ -334,6 +390,7 @@ class SemanticManifest:
             granularities=list(raw.get("granularities") or TIME_GRANULARITIES),
             pop_types=list(raw.get("pop_types") or POP_TYPES),
             two_stage=raw.get("two_stage"),
+            factors=raw.get("factors"),
         )
 
     # ---- 校验 ----
@@ -413,6 +470,36 @@ class SemanticManifest:
                 for ref in refs:
                     if ref not in self._metric_by_name:
                         problems.append(f"metric[{metric.name}] 引用了不存在的指标：{ref}")
+            # P3 因子归因：factors 声明校验（可选能力，配错即报出，不静默吞）
+            if metric.factors:
+                factor_names = metric.factors.get("factors") or {}
+                expr = str(metric.factors.get("expr") or "")
+                if not factor_names or not expr:
+                    problems.append(
+                        f"metric[{metric.name}] factors 需同时声明 expr 与 factors"
+                    )
+                else:
+                    import re as _re
+
+                    used = set(_re.findall(r"[A-Za-z_一-鿿][\w一-鿿]*", expr))
+                    undeclared = used - set(factor_names)
+                    if undeclared:
+                        problems.append(
+                            f"metric[{metric.name}] factors.expr 使用了未声明的因子："
+                            f"{sorted(undeclared)}（factors 键：{sorted(factor_names)}）"
+                        )
+                    for fkey, ref in factor_names.items():
+                        if ref not in self._metric_by_name and ref not in self._measure_owner:
+                            problems.append(
+                                f"metric[{metric.name}] 的因子[{fkey}]【{ref}】未定义"
+                                "（须为已收录指标或 measure）"
+                            )
+        # P3 指标树：节点引用校验（树为空跳过；引用不存在指标即报出）
+        for edge in self.metrics_tree:
+            for role in ("parent", "child"):
+                name = edge.get(role)
+                if name and name not in self._metric_by_name:
+                    problems.append(f"metrics_tree 边引用了不存在的指标：{name}")
         # 指标名与别名唯一性
         alias_seen: Dict[str, str] = {}
         for metric in self.metrics:

@@ -195,6 +195,47 @@ def _build_context(state: AgentState) -> str:
             diag_lines.append("- 成员结构变化：" + "；".join(parts))
         diag_lines.append(f"- 同向贡献TOP：{json.dumps(same, ensure_ascii=False)}")
         diag_lines.append(f"- 反向贡献TOP：{json.dumps(opp, ensure_ascii=False)}")
+        # P3：因子归因（逐因子替换法）
+        factors = diag.get("factors")
+        if factors and factors.get("factors"):
+            factor_lines = [
+                f"- 因子拆解（{factors.get('metric')} = {factors.get('expr')}，"
+                f"逐因子替换法、基线=上期；合计变化 {factors.get('total_change')}）："
+            ]
+            for f in factors.get("factors") or []:
+                factor_lines.append(
+                    f"  · {f.get('factor')}（{factors.get('factor_refs', {}).get(f.get('factor'), '')}）："
+                    f"{f.get('baseline')} → {f.get('current')}，"
+                    f"贡献 {f.get('contribution')}"
+                    + (f"（占基线 {f.get('rate')}）" if f.get("rate") is not None else "")
+                )
+            if factors.get("interaction"):
+                factor_lines.append(
+                    f"  · 因子交互（顺序尾差，未摊派）：{factors.get('interaction')}"
+                )
+            factor_lines.append(
+                "  请按各因子贡献组织「哪一项驱动了变化」的结论，不要改动数值或自行摊派交互项。"
+            )
+            diag_lines.extend(factor_lines)
+        # P3：指标树归因（单层分解）
+        tree = diag.get("tree")
+        if tree and tree.get("children"):
+            tree_lines = [
+                f"- 指标树分解（{tree.get('root')}，根变化 {tree.get('root_change')}）："
+            ]
+            for c in tree.get("children") or []:
+                if c.get("available"):
+                    tree_lines.append(
+                        f"  · {c.get('child')}：变化 {c.get('change')}"
+                        f"（相对贡献 {c.get('share')}）"
+                    )
+                else:
+                    tree_lines.append(f"  · {c.get('child')}：数据不可用，未计入")
+            if tree.get("residual"):
+                tree_lines.append(
+                    f"  · 未解释残差 {tree.get('residual')}（父口径与子口径差，如实说明）"
+                )
+            diag_lines.extend(tree_lines)
         # P2：两维交叉归因（主维度 × 第二维度）
         cross = diag.get("cross")
         if cross and cross.get("cells"):
@@ -235,6 +276,44 @@ def _build_context(state: AgentState) -> str:
                 if node.get("reason"):
                     drill_lines.append(f"    · 下钻理由：{node.get('reason')}")
             diag_lines.extend(drill_lines)
+        # 多指标联合归因：次要指标独立归因 + 与主指标的方向关系
+        per_metric = diag.get("per_metric") or []
+        relations = diag.get("metric_relations") or []
+        if relations:
+            rel_parts = []
+            for r in relations:
+                rate = r.get("change_rate")
+                rel_parts.append(
+                    f"{r.get('metric')} 变化 {r.get('change_value')}"
+                    + (f"（{rate}）" if rate is not None else "")
+                    + f"，与主指标【{r.get('vs')}】{r.get('relation')}"
+                )
+            diag_lines.append(
+                "- 多指标联动（方向关系为确定性判定，非因果结论）："
+                + "；".join(rel_parts)
+                + "。若存在背离，请在解读中如实指出并说明这只表明两指标方向相反，"
+                "不构成因果解释。"
+            )
+        if per_metric:
+            sec_lines = ["- 其余指标归因（同一取数结果上独立计算）："]
+            for entry in per_metric:
+                if not entry.get("ok"):
+                    sec_lines.append(f"  · {entry.get('metric')}：{entry.get('message')}")
+                    continue
+                ch = entry.get("change") or {}
+                ano = entry.get("anomaly") or {}
+                top_same = (entry.get("same_contribution_list") or [])[:2]
+                top_opp = (entry.get("opposite_contribution_list") or [])[:2]
+                top_text = "、".join(
+                    f"{t.get('dim_value')}={t.get('change_value')}"
+                    for t in list(top_opp) + list(top_same)
+                )
+                sec_lines.append(
+                    f"  · {entry.get('metric')}：变化 {ch.get('change_value')}"
+                    f"（变化率 {ch.get('change_rate')}），异动 {ano.get('status')}"
+                    + (f"，主要贡献：{top_text}" if top_text else "")
+                )
+            diag_lines.extend(sec_lines)
         hints = diag.get("action_hints") or []
         if hints:
             diag_lines.append("行动建议线索（基于上述贡献TOP，供你组织建议）：\n- " + "\n- ".join(hints))
@@ -551,6 +630,40 @@ def _template_answer(state: AgentState) -> str:
                             f"{c.get('dim_value')}={c.get('change_value')}"
                             for c in (node.get("children") or [])[:5]
                         )
+                    )
+            factors = diag.get("factors")
+            if factors and factors.get("factors"):
+                from dmf_agent.diagnosis.factors import summarize_factors
+
+                text = summarize_factors(str(diag.get("metric") or ""), factors)
+                if text:
+                    diag_lines.append(f"**因子拆解**：{text}")
+            tree = diag.get("tree")
+            if tree and tree.get("children"):
+                from dmf_agent.diagnosis.tree import summarize_tree
+
+                text = summarize_tree(tree)
+                if text:
+                    diag_lines.append(f"**指标树分解**：{text}")
+            relations = diag.get("metric_relations") or []
+            if relations:
+                rel_text = "；".join(
+                    f"{r.get('metric')} 变化 {r.get('change_value')}，与主指标{r.get('relation')}"
+                    for r in relations
+                )
+                diag_lines.append(f"**多指标联动**（方向判定，非因果）：{rel_text}。")
+            per_metric = diag.get("per_metric") or []
+            if per_metric:
+                diag_lines.append("**其余指标归因**（同一取数结果上独立计算）：")
+                for entry in per_metric:
+                    if not entry.get("ok"):
+                        diag_lines.append(f"- {entry.get('metric')}：{entry.get('message')}")
+                        continue
+                    ch = entry.get("change") or {}
+                    ano = entry.get("anomaly") or {}
+                    diag_lines.append(
+                        f"- {entry.get('metric')}：变化 {ch.get('change_value')}"
+                        f"（变化率 {ch.get('change_rate')}），异动 {ano.get('status')}"
                     )
             for w in diag.get("warnings") or []:
                 diag_lines.append(f"> 说明：{w}")

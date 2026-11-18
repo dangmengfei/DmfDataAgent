@@ -22,6 +22,8 @@ from dmf_agent.diagnosis.core import (
     rows_to_dicts,
     smart_summary,
 )
+from dmf_agent.diagnosis.factors import factor_contribution, parse_factor_expr, summarize_factors
+from dmf_agent.diagnosis.tree import summarize_tree, tree_attribution, tree_edges
 
 __all__ = [
     "contribution_top",
@@ -36,4 +38,10 @@ __all__ = [
     "rows_to_dicts",
     "smart_summary",
     "detect_anomaly",
+    "factor_contribution",
+    "parse_factor_expr",
+    "summarize_factors",
+    "tree_attribution",
+    "tree_edges",
+    "summarize_tree",
 ]

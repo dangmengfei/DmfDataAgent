@@ -95,11 +95,20 @@ def _attribution_fetch_dsl(
     return out
 
 
-def _diagnose(query_result: Dict[str, Any], dsl: Dict[str, Any]) -> Dict[str, Any]:
+def _diagnose(
+    query_result: Dict[str, Any],
+    dsl: Dict[str, Any],
+    multi_metric: bool = True,
+) -> Dict[str, Any]:
     """纯归因计算（可单测）：返回 state.diagnosis 结构。
 
     P1 期间对比：compare_mode 由 DSL 上游（build_diagnose_result）写入 dsl["compare_mode"]；
     缺省 period，时间点不足 2 个自动回落 endpoint。
+
+    多指标联合归因（2026-11-17）：问句带多个指标时，除主指标（metrics[0]，占顶层字段，
+    向后兼容）外，其余指标在**同一份取数结果**上各自独立归因（期间/异动/维度归因均为
+    纯计算，零额外取数），写入 per_metric；metric_relations 记录各指标与主指标的
+    同向/背离关系。P2 下钻与 P3 因子/树仍只对主指标做（逐指标展开会让补取数次数爆炸）。
     """
     columns = query_result.get("columns") or []
     rows = rows_to_dicts(query_result)
@@ -108,14 +117,16 @@ def _diagnose(query_result: Dict[str, Any], dsl: Dict[str, Any]) -> Dict[str, An
 
     compare_mode = str(dsl.get("compare_mode") or "period")
     time_col, has_time = _detect_time_column(columns, rows)
-    metrics = [m.get("name") for m in (dsl.get("metrics") or []) if m.get("name")]
+    requested = [m.get("name") for m in (dsl.get("metrics") or []) if m.get("name")]
     # 时间列不是业务维度：不能作为归因下钻对象（否则会输出「某日期为本期新增成员」这类
     # 无意义结论）。仅保留真实的业务维度列。
     dims = [
         d for d in (dsl.get("dimensions") or []) if d in columns and d != time_col
     ]
-    metric = metrics[0] if metrics else None
-    if metric is None or metric not in columns:
+
+    present = list(dict.fromkeys(m for m in requested if m in columns))
+    missing = [m for m in requested if m not in columns]
+    if not present:
         return {"ok": False, "message": "取数结果中缺少指标列，无法进行归因"}
 
     if not has_time:
@@ -129,19 +140,65 @@ def _diagnose(query_result: Dict[str, Any], dsl: Dict[str, Any]) -> Dict[str, An
         }
 
     use_period = compare_mode == "period"
+    primary_name = present[0]
+    primary = _diagnose_single(rows, time_col, primary_name, dims, use_period)
+    if primary is None:
+        return {
+            "ok": False,
+            "message": f"指标【{primary_name}】在取数范围内不足两个有数据的时间点，无法进行归因",
+        }
+    result = primary
+
+    # 多指标联合归因：次要指标各自独立归因 + 与主指标的方向关系（零额外取数）
+    if multi_metric and (len(present) > 1 or missing):
+        secondaries: List[Dict[str, Any]] = []
+        for name in present[1:]:
+            single = _diagnose_single(rows, time_col, name, dims, use_period)
+            if single is None:
+                secondaries.append(
+                    {
+                        "ok": False,
+                        "metric": name,
+                        "message": f"指标【{name}】在取数范围内不足两个有数据的时间点，无法进行归因",
+                    }
+                )
+            else:
+                secondaries.append(_compact_metric_entry(single))
+        for name in missing:
+            secondaries.append(
+                {"ok": False, "metric": name, "message": "取数结果中缺少该指标列"}
+            )
+        if secondaries:
+            result["per_metric"] = secondaries
+            result["metric_relations"] = _metric_relations(
+                primary_name, primary.get("change"), secondaries
+            )
+    return result
+
+
+def _diagnose_single(
+    rows: List[Dict[str, Any]],
+    time_col: str,
+    metric: str,
+    dims: List[str],
+    use_period: bool,
+) -> Optional[Dict[str, Any]]:
+    """单指标的完整归因计算（期间/端点 + 异动 + 维度归因 + 规则总结）。
+
+    时间点不足两个（期间与端点均不可算）返回 None；异动为 noise 时返回
+    仅含趋势描述的结果（跳过维度归因）。主指标与次要指标共用本函数。
+    """
     change: Optional[Dict[str, Any]] = None
-    if use_period:
+    used_period = use_period
+    if used_period:
         change = period_change(rows, time_col, metric)
         if change is None:
             # 期间划分不可行（< 2 个时间点）：回落端点口径
-            use_period = False
-    if not use_period:
+            used_period = False
+    if not used_period:
         change = metric_change(rows, time_col, metric)
     if change is None:
-        return {
-            "ok": False,
-            "message": f"指标【{metric}】在取数范围内不足两个有数据的时间点，无法进行归因",
-        }
+        return None
 
     # 异动前置判定：本期时间点序列 + 期间变化率
     time_values = _time_point_totals(rows, time_col, metric)
@@ -151,14 +208,14 @@ def _diagnose(query_result: Dict[str, Any], dsl: Dict[str, Any]) -> Dict[str, An
     # 避免把随机波动解释成业务原因（问题清单 #2）。
     if anomaly["status"] == "noise":
         global_text = (
-            period_global_summary(change) if use_period else global_summary(change)
+            period_global_summary(change) if used_period else global_summary(change)
         )
         return {
             "ok": True,
             "metric": metric,
             "global_summary": global_text,
             "change": change,
-            "compare_mode": "period" if use_period else "endpoint",
+            "compare_mode": "period" if used_period else "endpoint",
             "anomaly": anomaly,
             "dimensions": {},
             "same_contribution_list": [],
@@ -173,7 +230,7 @@ def _diagnose(query_result: Dict[str, Any], dsl: Dict[str, Any]) -> Dict[str, An
 
     dim_results: Dict[str, List[Dict[str, Any]]] = {}
     for dim in dims:
-        if use_period:
+        if used_period:
             dim_results[dim] = period_dim_attribution(rows, time_col, dim, metric)
         else:
             dim_results[dim] = dim_attribution(rows, time_col, dim, metric)
@@ -185,7 +242,7 @@ def _diagnose(query_result: Dict[str, Any], dsl: Dict[str, Any]) -> Dict[str, An
     kept_only = [r for r in primary_results if r.get("presence", "kept") == "kept"]
     contrib = contribution_top(kept_only, change.get("change_value"))
 
-    if use_period:
+    if used_period:
         added = [r for r in primary_results if r.get("presence") == "added"]
         removed = [r for r in primary_results if r.get("presence") == "removed"]
         global_text = period_global_summary(change)
@@ -202,7 +259,7 @@ def _diagnose(query_result: Dict[str, Any], dsl: Dict[str, Any]) -> Dict[str, An
         "metric": metric,
         "global_summary": global_text,
         "change": change,
-        "compare_mode": "period" if use_period else "endpoint",
+        "compare_mode": "period" if used_period else "endpoint",
         "anomaly": anomaly,
         "dimensions": _trim_dims(dim_results),
         "same_contribution_list": contrib["same"],
@@ -216,6 +273,61 @@ def _diagnose(query_result: Dict[str, Any], dsl: Dict[str, Any]) -> Dict[str, An
             change, contrib["same"], contrib["opposite"], primary_dim
         ),
     }
+
+
+def _compact_metric_entry(single: Dict[str, Any], max_top: int = 3) -> Dict[str, Any]:
+    """次要指标的紧凑归因结果（进 per_metric / trace；不带完整维度明细防膨胀）。"""
+    anomaly = single.get("anomaly") or {}
+    return {
+        "ok": True,
+        "metric": single.get("metric"),
+        "compare_mode": single.get("compare_mode"),
+        "change": single.get("change"),
+        "anomaly": {"status": anomaly.get("status"), "message": anomaly.get("message")},
+        "primary_dim": single.get("primary_dim"),
+        "same_contribution_list": (single.get("same_contribution_list") or [])[:max_top],
+        "opposite_contribution_list": (single.get("opposite_contribution_list") or [])[:max_top],
+        "added_members": single.get("added_members") or [],
+        "removed_members": single.get("removed_members") or [],
+        "global_summary": single.get("global_summary", ""),
+        "smart_summary": single.get("smart_summary", ""),
+    }
+
+
+def _metric_relations(
+    primary_name: str,
+    primary_change: Optional[Dict[str, Any]],
+    secondaries: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """各次要指标与主指标的**方向关系**（确定性判定，联合归因的「联」）。
+
+    同向 = 与主指标变化方向一致；背离 = 方向相反；次要指标零变化记「持平」。
+    只描述方向事实，不做因果推断（因果归 P3 因子/树归因）。
+    """
+    p_change = (primary_change or {}).get("change_value")
+    if p_change is None:
+        return []
+    relations: List[Dict[str, Any]] = []
+    for entry in secondaries:
+        if not entry.get("ok"):
+            continue
+        s_change = (entry.get("change") or {}).get("change_value")
+        if s_change is None:
+            continue
+        if s_change == 0:
+            relation = "持平"
+        else:
+            relation = "同向" if (p_change > 0) == (s_change > 0) else "背离"
+        relations.append(
+            {
+                "metric": entry.get("metric"),
+                "change_value": s_change,
+                "change_rate": (entry.get("change") or {}).get("change_rate"),
+                "relation": relation,
+                "vs": primary_name,
+            }
+        )
+    return relations
 
 
 def _detect_time_column(
@@ -819,6 +931,185 @@ async def _advice_docs(
     return out
 
 
+# ---------------- P3：因子归因 + 指标树归因 ----------------
+
+
+def _attribution_period_totals(
+    query_result: Dict[str, Any], metric: str
+) -> Optional[Tuple[float, float]]:
+    """从既有取数结果取某指标的（本期总量, 上期总量）——复用 P1 的对半分口径。"""
+    columns = query_result.get("columns") or []
+    rows = rows_to_dicts(query_result)
+    if not rows:
+        return None
+    time_col, has_time = _detect_time_column(columns, rows)
+    if not has_time:
+        return None
+    if metric not in columns:
+        return None
+    change = period_change(rows, time_col, metric)
+    if change is None:
+        return None
+    return float(change.get("metrics_value") or 0.0), float(
+        change.get("compare_metrics_value") or 0.0
+    )
+
+
+async def _factor_attribution(
+    state: AgentState,
+    deps: AgentDeps,
+    base_result: Dict[str, Any],
+    dsl: Dict[str, Any],
+    hstate: HarnessState,
+    hctx: HarnessContext,
+) -> Tuple[Optional[Dict[str, Any]], List[str]]:
+    """因子归因（P3 §7.1）：逐因子替换法，每个因子一次补取数。
+
+    前提：语义层 metric 声明 factors 公式（expr + factors 映射）。因子值按
+    因子自身口径取数（同指标/过滤/时间窗，无维度分组——因子是总量口径的拆解），
+    本期/上期值由 P1 的期间对半分口径从因子取数结果计算。
+
+    任一因子取数失败 / 因子值无效：整体跳过因子归因（返回 None）并在 warnings
+    说明——部分因子缺失时替换法无法闭合恒等式，宁缺毋滥。
+    """
+    from dmf_agent.diagnosis.factors import factor_contribution, parse_factor_expr
+
+    ds = deps.diagnosis_settings
+    warnings: List[str] = []
+    metric = base_result.get("metric")
+    layer = deps.semantic_layer
+    engine = deps.metric_engine
+    if not ds.enabled or not ds.factors_enabled or not metric or layer is None or engine is None:
+        return None, []
+    metric_obj = layer.resolve_metric(metric)
+    if metric_obj is None or not metric_obj.factors:
+        return None, []
+
+    factor_map = metric_obj.factors.get("factors") or {}
+    expr = str(metric_obj.factors.get("expr") or "")
+    ordered = parse_factor_expr(expr, factor_map)
+    if not ordered:
+        warnings.append(
+            f"因子公式不可解析（expr={expr or '空'}），已跳过因子归因。"
+        )
+        return None, warnings
+
+    # 逐因子取数：因子值 = 因子指标在归因口径（过滤/时间窗）下的期间总量
+    baseline: Dict[str, float] = {}
+    current: Dict[str, float] = {}
+    for key in ordered:
+        ref = str(factor_map[key])
+        fetch_dsl = _attribution_fetch_dsl(dsl, [], )
+        fetch_dsl["metrics"] = [{"name": ref}]
+        async def _raw():
+            return await engine.query(fetch_dsl)
+        try:
+            fetched = await _invoke_fetch(deps, state, hctx, hstate, fetch_dsl, _raw)
+        except Exception as exc:  # noqa: BLE001 - 因子取数失败：整体跳过
+            warnings.append(f"因子[{key}]（{ref}）取数失败（{exc}），已跳过因子归因。")
+            return None, warnings
+        totals = _attribution_period_totals(fetched, ref)
+        if totals is None:
+            warnings.append(f"因子[{key}]（{ref}）未返回有效期间数据，已跳过因子归因。")
+            return None, warnings
+        current[key], baseline[key] = totals  # (本期, 上期)
+
+    result = factor_contribution(baseline, current, ordered)
+    result["metric"] = metric
+    result["expr"] = expr
+    result["factor_refs"] = dict(factor_map)
+    return result, warnings
+
+
+async def _tree_attribution(
+    state: AgentState,
+    deps: AgentDeps,
+    base_result: Dict[str, Any],
+    dsl: Dict[str, Any],
+    hstate: HarnessState,
+    hctx: HarnessContext,
+) -> Tuple[Optional[Dict[str, Any]], List[str]]:
+    """指标树归因（P3 §7.2）：单层分解，各子指标一次补取数。
+
+    前提：清单声明 metrics_tree 且含以当前指标为父节点的边。子指标按自身口径
+    取数，期间变化量与根指标同口径（P1 对半分）；子指标取数失败仅该子项标记
+    不可用（share 在可用子集内归一），不整体跳过——树分解容错性优于因子恒等式。
+    """
+    from dmf_agent.diagnosis.tree import tree_attribution
+
+    ds = deps.diagnosis_settings
+    warnings: List[str] = []
+    metric = base_result.get("metric")
+    layer = deps.semantic_layer
+    engine = deps.metric_engine
+    if not ds.enabled or not ds.tree_enabled or not metric or layer is None or engine is None:
+        return None, []
+    tree = layer.manifest.metrics_tree if layer is not None else []
+    if not tree or not any(e.get("parent") == metric for e in tree):
+        return None, []
+
+    period_by_metric: Dict[str, Dict[str, Any]] = {}
+    root_totals = _attribution_period_totals(
+        state.get("query_result") or {}, metric
+    )
+    if root_totals is None:
+        # 根指标总量可能要靠补取数结果（P1 补了时间轴），优先用 base_result.change
+        change = base_result.get("change") or {}
+        if change.get("metrics_value") is not None:
+            root_totals = (
+                float(change.get("metrics_value") or 0.0),
+                float(change.get("compare_metrics_value") or 0.0),
+            )
+    if root_totals is None:
+        warnings.append("根指标缺少期间总量数据，已跳过指标树归因。")
+        return None, warnings
+    period_by_metric[metric] = {
+        "metrics_value": root_totals[0],
+        "compare_metrics_value": root_totals[1],
+        "change_value": root_totals[0] - root_totals[1],
+    }
+
+    for edge in [e for e in tree if e.get("parent") == metric]:
+        child = str(edge.get("child") or "")
+        fetch_dsl = _attribution_fetch_dsl(dsl, [])
+        fetch_dsl["metrics"] = [{"name": child}]
+        async def _raw():
+            return await engine.query(fetch_dsl)
+        try:
+            fetched = await _invoke_fetch(deps, state, hctx, hstate, fetch_dsl, _raw)
+            totals = _attribution_period_totals(fetched, child)
+        except Exception as exc:  # noqa: BLE001 - 单子指标失败只标记不可用
+            logger.warning("指标树子指标[%s]取数失败：%s", child, exc)
+            warnings.append(f"树子指标[{child}]取数失败，该项未计入分解。")
+            continue
+        if totals is None:
+            warnings.append(f"树子指标[{child}]未返回有效期间数据，该项未计入分解。")
+            continue
+        period_by_metric[child] = {
+            "metrics_value": totals[0],
+            "compare_metrics_value": totals[1],
+            "change_value": totals[0] - totals[1],
+        }
+
+    result = tree_attribution(tree, metric, period_by_metric)
+    return result, warnings
+
+
+async def _invoke_fetch(
+    deps: AgentDeps,
+    state: AgentState,
+    hctx: HarnessContext,
+    hstate: HarnessState,
+    fetch_dsl: Dict[str, Any],
+    raw_fn,
+) -> Dict[str, Any]:
+    """归因补取数的统一入口：harness 在则走白名单，否则直连引擎。"""
+    harness = getattr(deps, "harness", None)
+    if harness is not None:
+        return await harness.invoke("diagnose_fetch", {"dsl": fetch_dsl}, hctx, hstate, raw_fn)
+    return await raw_fn()
+
+
 # ---------------- 节点 ----------------
 
 
@@ -871,6 +1162,21 @@ def build_diagnose_node(deps: AgentDeps):
             advice = await _advice_docs(state, deps, result, hstate, hctx)
             if advice:
                 result["advice_docs"] = advice
+
+            # ---- P3：因子归因（每个因子一次补取数）+ 指标树归因（每个子指标一次） ----
+            if result.get("anomaly", {}).get("status") == "significant":
+                factors, f_warnings = await _factor_attribution(
+                    state, deps, result, dsl, hstate, hctx
+                )
+                if factors:
+                    result["factors"] = factors
+                warnings.extend(f_warnings)
+                tree, t_warnings = await _tree_attribution(
+                    state, deps, result, dsl, hstate, hctx
+                )
+                if tree:
+                    result["tree"] = tree
+                warnings.extend(t_warnings)
 
         if warnings:
             result["warnings"] = warnings

@@ -35,6 +35,7 @@ _FALLBACK_ALLOWED_TOOLS = [
     "execute_query",
     "retrieve_knowledge",
     "analyze_data",
+    "run_analysis",
     "mcp_tool",
     "run_skill_script",
 ]
@@ -234,6 +235,24 @@ class SkillExecutor:
                 if dist:
                     out["distribution"] = dist
             return out
+
+        if tool == "run_analysis":
+            # 分析模型统一入口（2026-11-18 P1）：模型名 + 参数 + 上一步 query_result
+            from dmf_agent.analysis.tools import run_analysis
+
+            qr = arguments.get("query_result")
+            if not isinstance(qr, dict):
+                # 步骤间传递约定：上一步 execute_query 的返回即 query_result
+                raise RuntimeError(
+                    "run_analysis 需要上一步的 query_result（对象；通常由 execute_query 步骤产出）"
+                )
+            result = run_analysis(
+                qr,
+                str(arguments.get("model") or ""),
+                arguments.get("params") or {},
+                registry=self._harness.registry if self._harness is not None else None,
+            )
+            return result.to_dict()
 
         if tool == "mcp_tool":
             if self._plugin_registry is None:

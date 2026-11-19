@@ -14,6 +14,13 @@ from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel
 
 
+def _analysis_result_schema() -> type:
+    """AnalysisResult 的 pydantic 形（延迟导入避免环：schemas 不依赖 harness）。"""
+    from dmf_agent.schemas.agent import AnalysisResultModel
+
+    return AnalysisResultModel
+
+
 @dataclass
 class ToolSpec:
     name: str
@@ -214,6 +221,24 @@ def build_default_tool_registry() -> ToolRegistry:
         },
         # 与 RBAC PERM_KNOWLEDGE（"knowledge"）对齐，不是 "knowledge:read"
         required_permissions=["knowledge"],
+    )
+    registry.register(
+        "run_analysis",
+        "对已有取数结果运行指定分析模型（analysis_trend 趋势 / analysis_anomaly 异动 / "
+        "analysis_correlation 相关 / analysis_pareto 帕累托 / analysis_compare 对比 / "
+        "analysis_stats 统计 / analysis_distribution 分布）",
+        input_schema={
+            "type": "object",
+            "required": ["model", "query_result"],
+            "properties": {
+                "model": {"type": "string", "description": "分析模型名（MODEL_REGISTRY 内）"},
+                "params": {"type": "object", "description": "模型参数（各模型 schema 见 analysis/base.py）"},
+                "query_result": {"type": "object", "description": "上一步取数结果 {columns, rows}"},
+            },
+        },
+        required_permissions=["semantic:query"],
+        # FR15 输出约束：统一契约结构化校验（实现为 analysis.base.AnalysisResult 的同构 pydantic）
+        output_schema=_analysis_result_schema(),
     )
     registry.register(
         "synthesize_answer",

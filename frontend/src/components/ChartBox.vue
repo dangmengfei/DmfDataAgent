@@ -26,6 +26,44 @@ function buildOption(spec){
     const n = Number(v)
     return isFinite(n) ? n.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) + (unit ? ' ' + unit : '') : String(v)
   }
+  // 帕累托（2026-11-18 P1）：柱（数值）+ 累计线（右轴 %），附 80% 阈值标记线
+  if(spec.type === 'pareto'){
+    const [main, cum] = spec.series || []
+    const thresholdPct = spec.threshold != null ? spec.threshold * 100 : 80
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis', confine: true },
+      legend: { data: (spec.series || []).map(s => s.name), textStyle: { fontSize: 10, color: '#6B7280' } },
+      grid: { left: 16, right: 44, top: 32, bottom: 6, containLabel: true },
+      xAxis: {
+        type: 'category',
+        data: spec.x || [],
+        axisLabel: { color: '#6B7280', fontSize: 11, rotate: (spec.x || []).length > 6 ? 30 : 0 },
+        axisLine: { lineStyle: { color: '#E4E3DD' } }
+      },
+      yAxis: [
+        { type: 'value', name: unit, axisLabel: { color: '#6B7280', fontSize: 11 }, splitLine: { lineStyle: { color: '#F0EFEA' } } },
+        { type: 'value', name: '%', min: 0, max: 100, axisLabel: { color: '#6B7280', fontSize: 11, formatter: '{value}%' }, splitLine: { show: false } }
+      ],
+      series: [
+        {
+          name: (main && main.name) || '值', type: 'bar', data: (main && main.data) || [],
+          barMaxWidth: 28, itemStyle: { borderRadius: [4, 4, 0, 0], color: '#8BC8EA' }
+        },
+        {
+          name: (cum && cum.name) || '累计占比', type: 'line', yAxisIndex: 1,
+          data: (cum && cum.data) || [], smooth: false,
+          itemStyle: { color: '#C07A2B' }, lineStyle: { color: '#C07A2B' },
+          markLine: {
+            symbol: 'none', silent: true,
+            lineStyle: { color: '#C0392B', type: 'dashed' },
+            label: { formatter: thresholdPct + '%', fontSize: 10 },
+            data: [{ yAxis: thresholdPct }]
+          }
+        }
+      ]
+    }
+  }
   const isBar = spec.type === 'bar'
   const series = (spec.series || []).map(s => {
     const base = { name: s.name, type: isBar ? 'bar' : 'line', data: s.data, smooth: !isBar, connectNulls: true }
@@ -38,6 +76,15 @@ function buildOption(spec){
         base.itemStyle.color = '#8BC8EA'
       }
       base.label = { show: true, position: 'top', fontSize: 10, color: '#6B7280', formatter: p => fmt(p.value) }
+    }
+    // 异动检测离群点标记（analysis_anomaly：mark_points 为离群期序号）
+    if(Array.isArray(s.mark_points) && s.mark_points.length){
+      base.markPoint = {
+        symbol: 'circle', symbolSize: 8,
+        itemStyle: { color: '#C0392B' },
+        label: { show: false },
+        data: s.mark_points.filter(i => i >= 0 && i < (s.data || []).length).map(i => ({ coord: [String((spec.x || [])[i]), s.data[i]] }))
+      }
     }
     return base
   })

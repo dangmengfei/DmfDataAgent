@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -162,6 +162,37 @@ class DiagnosisPlanStep(BaseModel):
     value: str = Field("", description="要下钻的维值（必须来自上下文已列出的维值）")
     dim: str = Field("", description="用哪个新维度切分（必须来自候选维度列表）")
     reason: str = Field("", description="决策理由（一句话）")
+
+
+class AnalysisStep(BaseModel):
+    """分析模型规划的单步（2026-11-18 数据分析能力提升 P1，方案 §3.4）。
+
+    model 必须在 MODEL_REGISTRY 内；params 各模型 schema 见 analysis/base.py。
+    """
+
+    model: str = Field(..., description="分析模型名（analysis_trend / analysis_pareto / ...）")
+    params: Dict[str, Any] = Field(default_factory=dict, description="模型参数")
+
+
+class AnalysisPlan(BaseModel):
+    """LLM 分析规划输出（无 LLM / 失败 / 非法模型名回落关键词规则，对齐 FR14）。"""
+
+    steps: List[AnalysisStep] = Field(
+        default_factory=list, description="按序执行的分析步骤（≤3 步）"
+    )
+
+
+class AnalysisResultModel(BaseModel):
+    """分析模型统一输出的 pydantic 形（Harness 工具 `run_analysis` 的 output_schema，
+    FR15 输出约束；与 analysis.base.AnalysisResult 数据类同构）。"""
+
+    ok: bool
+    model: str
+    summary: str = ""
+    data: Dict[str, Any] = Field(default_factory=dict)
+    insight_lines: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    error: str = ""
 
 
 class MetricDraftProposal(BaseModel):

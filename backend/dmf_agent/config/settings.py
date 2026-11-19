@@ -642,6 +642,21 @@ class AgentSettings(BaseModel):
     context_window_tokens: int = 32768
 
 
+class AnalysisSettings(BaseModel):
+    """分析模型工具库（2026-11-18 数据分析能力提升 P1，doc/数据分析能力提升方案.md）。
+
+    - enabled：总开关。关闭时 analyze_data 节点行为与现状**逐字一致**（stats + 二次分析
+      +「分布」关键词分桶），供线上回归兜底。
+    - model_driven：LLM 结构化输出规划分析模型（AnalysisPlan，P2 接入）；当前 P1 仅
+      关键词规则选模型，本开关预置（True 不改变 P1 行为）。
+    - max_steps：单轮最多执行的分析模型数（防止多步执行拖慢答复与撑大 trace）。
+    """
+
+    enabled: bool = True
+    model_driven: bool = True
+    max_steps: int = 3
+
+
 class PromptsSettings(BaseModel):
     """FR12 提示词 5 层 / 灰度 / 门禁 / A·B 开关。"""
     gray_enabled: bool = True
@@ -731,6 +746,8 @@ class Settings(BaseSettings):
     cost: CostSettings = Field(default_factory=CostSettings)
     # 语义层定义来源（混合方案：YAML 基座 / DB 发布快照）
     semantic: SemanticSettings = Field(default_factory=SemanticSettings)
+    # 分析模型工具库（数据分析能力提升 P1）
+    analysis: AnalysisSettings = Field(default_factory=AnalysisSettings)
     # 提示词治理（PRD FR12：5 层 / 灰度 / 门禁 / A·B）
     prompts: PromptsSettings = Field(default_factory=PromptsSettings)
     # 模型管理（对话 LLM 配置入库；默认模型覆盖环境变量 DMF_LLM-* 生效）

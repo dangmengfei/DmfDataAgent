@@ -211,11 +211,38 @@ def build_analyze_data_node(deps: AgentDeps):
         # 确定性分桶（先算后说，不做 SQL 下推）。
         # 分桶基于**基础取数结果**（每维度成员一行）；二次分析结果可能按时间重分组，
         # 语义不是"成员取值分布"。样本不足时 compute_distribution 返回 None。
-        if "分布" in user_text and not error:
+        # 2026-11-18 P1：开关开启时「分布」迁入分析模型工具库（行为一致）；关闭时保留原样。
+        analysis_enabled = getattr(deps.settings, "analysis", None) is not None and deps.settings.analysis.enabled
+        if "分布" in user_text and not error and not analysis_enabled:
             metrics_names = elements.get("metrics") or []
             result["distribution"] = compute_distribution(
                 query_result, metrics_names[0] if metrics_names else None
             )
+
+        # 分析模型工具库（2026-11-18 P1，方案 §3.4）：关键词规则选模型 -> 按序执行 ->
+        # results 进 state.analysis（答复节点与前端消费）。只消费已取回的数据（先算后说）。
+        # ENABLED=false 或取数失败时跳过，行为与现状逐字一致（降级矩阵）。
+        if analysis_enabled and not error:
+            from dmf_agent.analysis.tools import keyword_plan, run_analysis
+
+            planned = keyword_plan(user_text)[: max(0, deps.settings.analysis.max_steps)]
+            results: List[Dict[str, Any]] = []
+            if planned:
+                metrics_names = elements.get("metrics") or []
+                for model_name in planned:
+                    params: Dict[str, Any] = {}
+                    if metrics_names and model_name in (
+                        "analysis_trend", "analysis_anomaly", "analysis_distribution",
+                        "analysis_pareto", "analysis_compare",
+                    ):
+                        params["metric"] = metrics_names[0]
+                    # 「分布」保持 FR2 口径：基于基础取数结果（每维度成员一行）
+                    src = query_result if model_name == "analysis_distribution" else (advanced_result or query_result)
+                    ar = run_analysis(src, model_name, params)
+                    results.append(ar.to_dict())
+                    logger.info("分析模型[%s]执行：%s", model_name, "ok" if ar.ok else ar.error)
+            if results:
+                result["results"] = results
 
         # 空数据回溯（PRD FR5）：取数成功但实质为空 -> 6 项原因诊断，绝不静默重试；
         # 时间越界且能给出「最新可得窗口」时，诊断附带 redirect，图随后转 ask_time_redirect
@@ -249,6 +276,11 @@ def build_analyze_data_node(deps: AgentDeps):
                         "stats": stats,
                         # 分布分桶为 Python 确定性统计（先算后说），LLM 仅组织语言
                         "distribution": result.get("distribution"),
+                        # 分析模型结果（P1）：确定性计算，LLM 仅组织语言
+                        "analysis_results": [
+                            {k: v for k, v in r.items() if k != "data"} | {"data_type": (r.get("data") or {}).get("type")}
+                            for r in (result.get("results") or [])
+                        ],
                     },
                     ensure_ascii=False,
                 )
@@ -274,8 +306,16 @@ def build_analyze_data_node(deps: AgentDeps):
                 logger.warning("LLM 分析失败，回退统计摘要：%s", exc)
 
         dist_text = format_distribution(result.get("distribution"))
+        # 分析模型确定性文本（P1）：ok 的结果直接进模板答复（无 LLM 也有分析结论）
+        model_text = "\n\n".join(
+            r.get("summary", "")
+            for r in (result.get("results") or [])
+            if r.get("ok") and r.get("summary")
+        )
         result["summary"] = (
-            _stats_summary(stats) + (f"\n\n{dist_text}" if dist_text else "")
+            _stats_summary(stats)
+            + (f"\n\n{dist_text}" if dist_text else "")
+            + (f"\n\n{model_text}" if model_text else "")
         )
         return {"analysis": result, "mock_mode": True}
 

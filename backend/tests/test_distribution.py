@@ -68,7 +68,11 @@ def test_fmt_value_units():
 
 
 async def test_analyze_distribution_keyword_produces_distribution():
-    """问句含「分布」-> analysis.distribution 就位（真实分桶，非编造）。"""
+    """问句含「分布」-> 分析模型工具库产出真实分桶（analysis_distribution，非编造）。
+
+    2026-11-18 P1：「分布」从顶层 distribution 键迁到 analysis.results[]（行为一致，
+    通道变化）；同时断言 `DMF_ANALYSIS-ENABLED=false` 时旧通道仍在（回归开关）。
+    """
     deps = make_deps()
     node = build_analyze_data_node(deps)
     state = {
@@ -81,12 +85,21 @@ async def test_analyze_distribution_keyword_produces_distribution():
     }
     result = await node(state)
     analysis = result["analysis"]
-    dist = analysis.get("distribution")
-    assert dist is not None
+    results = analysis.get("results") or []
+    assert results and results[0]["model"] == "analysis_distribution" and results[0]["ok"]
+    dist = results[0]["data"]
     assert dist["metric"] == "GMV"
     assert sum(b["count"] for b in dist["bins"]) == 8
     # mock 模板摘要包含分布文字
     assert "GMV 分布" in analysis["summary"]
+
+    # 回归开关：ENABLED=false 时旧顶层通道逐字保留
+    deps.settings.analysis.enabled = False
+    node2 = build_analyze_data_node(deps)
+    result2 = await node2(dict(state))
+    dist2 = result2["analysis"].get("distribution")
+    assert dist2 is not None and dist2["metric"] == "GMV"
+    assert not result2["analysis"].get("results")
 
 
 async def test_analyze_plain_query_no_distribution():

@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dmf_agent import __version__
 from dmf_agent.agents.metric_agent import AgentDeps, build_metric_agent_graph
 from dmf_agent.api.routers import (
+    analysis,
     audit,
     auth as auth_router,
     chat,
@@ -625,6 +626,8 @@ def create_app() -> FastAPI:
     app.include_router(knowledge.router, prefix="/api/v1", tags=["knowledge"], dependencies=protected)
     # 指标检索（语义层）：/metrics 列表 + /metrics/{code} 详情，供前端指标选择。
     app.include_router(metrics.router, prefix="/api/v1", tags=["metrics"], dependencies=protected)
+    # 分析模型试算（数据分析能力提升 P1）：/analysis/models、/analysis/run
+    app.include_router(analysis.router, prefix="/api/v1", tags=["analysis"], dependencies=protected)
     # 语义层只读面：指标/维度目录、清单概览、数据源探针、SQL 编译试算与查询执行（前端语义浏览器）。
     app.include_router(semantic.router, prefix="/api/v1", tags=["semantic"], dependencies=protected)
     # 语义注册中心治理：模型/指标/维度/度量 CRUD，快照起草-提交-审批-发布、热更新、租户 overlay 编辑。

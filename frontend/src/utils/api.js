@@ -604,3 +604,11 @@ function parseFrame(frame) {
   }
   return { type, ...data }
 }
+
+/* ---- 分析模型试算（2026-11-18 数据分析能力提升 P1）---- */
+export const fetchAnalysisModels = () => req(`${API}/analysis/models`)
+export const runAnalysisOnce = (model, query_result, params = {}) =>
+  req(`${API}/analysis/run`, {
+    method: 'POST',
+    body: JSON.stringify({ model, query_result, params })
+  })

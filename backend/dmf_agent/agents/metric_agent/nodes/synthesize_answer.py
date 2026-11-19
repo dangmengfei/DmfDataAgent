@@ -118,6 +118,23 @@ def _build_context(state: AgentState) -> str:
         )
     if analysis.get("stats"):
         sections.append(f"统计量：{json.dumps(analysis['stats'], ensure_ascii=False)}")
+    # 分析模型结果（2026-11-18 P1）：确定性计算，LLM 仅组织语言（先算后说）。
+    # 职责切分（方案 §9.2）：correlation 的结论是数值相关强度，不得改写为因果表述。
+    for ar in analysis.get("results") or []:
+        if not ar.get("ok"):
+            if ar.get("error"):
+                sections.append(f"分析模型[{ar.get('model')}]未能完成：{ar['error']}（如实向用户说明）")
+            continue
+        lines = [f"分析模型[{ar.get('model')}]结果（确定性计算，请据此组织语言，不要改动数值）："]
+        if ar.get("summary"):
+            lines.append(f"- {ar['summary']}")
+        for line in (ar.get("insight_lines") or [])[1:6]:
+            lines.append(f"- {line}")
+        for w in ar.get("warnings") or []:
+            lines.append(f"- 注意：{w}")
+        if ar.get("model") == "analysis_correlation":
+            lines.append("  相关性只表示数值关联强度，禁止表述为「A 导致/影响了 B」。")
+        sections.append("\n".join(lines))
     diag = state.get("diagnosis") or {}
     if diag.get("ok"):
         change = diag.get("change") or {}

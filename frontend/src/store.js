@@ -1265,6 +1265,49 @@ function vizFromNodeTrace(t) {
       series: [{ name: '数量', data: dist.bins.map((b) => b.count) }]
     })
   }
+  // 分析模型结果图表（2026-11-18 P1）：analysis.results[].data 为确定性绘图 spec，前端只画
+  for (const ar of (t.analysis && t.analysis.results) || []) {
+    if (!ar || !ar.ok || !ar.data) continue
+    const d = ar.data
+    if (d.type === 'trend' && Array.isArray(d.values) && d.values.length) {
+      const x = d.values.map((_, i) => `第${i + 1}期`)
+      const series = [{ name: d.metric || '值', data: d.values }]
+      if (Array.isArray(d.moving_average)) series.push({ name: '移动平均', data: d.moving_average })
+      viz.push({ type: 'line', title: `${d.metric || ''} 趋势`, x, series })
+    } else if (d.type === 'pareto' && Array.isArray(d.items) && d.items.length) {
+      viz.push({
+        type: 'pareto',
+        title: `${d.metric} 帕累托（按 ${d.dimension}）`,
+        x: d.items.map((it) => String(it.value)),
+        series: [
+          { name: d.metric || '值', data: d.items.map((it) => it.amount) },
+          { name: '累计占比%', data: d.items.map((it) => Math.round(it.cumulative_share * 10000) / 100) }
+        ],
+        threshold: d.threshold
+      })
+    } else if (d.type === 'distribution' && Array.isArray(d.bins) && d.bins.length) {
+      viz.push({
+        type: 'bar',
+        title: `${d.metric} 分布`,
+        x: d.bins.map((b) => b.label),
+        series: [{ name: '数量', data: d.bins.map((b) => b.count) }]
+      })
+    } else if (d.type === 'anomaly' && Array.isArray(d.values) && d.values.length) {
+      viz.push({
+        type: 'bar',
+        title: `${d.metric} 异动检测`,
+        positive_negative: false,
+        x: d.values.map((_, i) => `第${i + 1}期`),
+        series: [
+          {
+            name: d.metric || '值',
+            data: d.values,
+            mark_points: (d.outliers || []).map((o) => o.index)
+          }
+        ]
+      })
+    }
+  }
   return viz
 }
 
